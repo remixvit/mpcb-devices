@@ -1,0 +1,3 @@
+[submodule "lib/mpcb-iot-core"]
+	path = lib/mpcb-iot-core
+	url = https://github.com/remixvit/mpcb-iot-core
