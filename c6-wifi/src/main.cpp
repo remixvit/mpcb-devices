@@ -77,6 +77,10 @@ void setup() {
         pm.handleMessage(topic, payload);
     });
 
+    // ── Dashboard ────────────────────────────────────────────────────────────
+    iot.onDashState([](){ return pm.getStateJson(); });
+    iot.onDashCmd([](const String& key, const String& payload){ pm.handleLocalCmd(key, payload); });
+
     iot.begin("mpcb device");
     deviceId = iot.storage().loadDevice().deviceId;
     Log.log("App", "Device ready: " + deviceId);
