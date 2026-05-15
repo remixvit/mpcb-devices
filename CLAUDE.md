@@ -167,24 +167,24 @@ VL53: если оба lib (L0X и L1X) скомпилированы — runtime 
 `_sanitize()` оставляет только `[a-z0-9]` — пробелы/дефисы удаляются, не конвертируются в `_`.
 JS `san()` синхронизирован. **Breaking:** старые метки с пробелами дадут другой MQTT-ключ.
 
-## Архитектурный план → многочиповость
+## Архитектура → многочиповость ✅
 
 ```cpp
-// Разделить транспорт от периферии:
+// РЕАЛИЗОВАНО: ITransport в src/ITransport.h
 class ITransport {
     virtual bool publish(const String& topic, const String& payload, bool retain) = 0;
     virtual bool subscribe(const String& topic) = 0;
 };
-// MpcbIotCore    : public ITransport  ← C6 WiFi  (сейчас)
+// MpcbIotCore    : public ITransport  ← C6 WiFi  ✅ реализовано
 // MpcbZigbeeCore : public ITransport  ← C6/H2 Zigbee (будущее)
-// PeriphManager принимает ITransport* — работает с любым транспортом
+// PeriphManager принимает ITransport& — работает с любым транспортом ✅
 ```
 
 ## Flash/RAM бюджет (c6-wifi, актуально 2026-05)
 
-Замеры: WiFi+BLE+MQTT+AHT10+VL53L0X+VL53L1X+PCF8574+rules+analog_cal+dashboard
+Замеры: WiFi+BLE+MQTT+AHT10+VL53L0X+VL53L1X+PCF8574+rules+analog_cal+dashboard+ITransport
 ```
-Flash: 88.2%  (1619 КБ из 1835 КБ)  — свободно ~216 КБ
+Flash: 88.6%  (1625 КБ из 1835 КБ)  — свободно ~210 КБ
 RAM:   19.2%  (63 КБ из 320 КБ)     — свободно ~254 КБ
 ```
 
@@ -243,10 +243,11 @@ Tare-offset: `{"tare":true}` / `{"tare_reset":true}` через MQTT set. Хра
 `GET /dash` — live-состояние всех периферий, обновление каждые 2с.
 Управление реле прямо из браузера через `/api/cmd`.
 
-### Следующий шаг — ITransport абстракция
+### ✅ ITransport абстракция — РЕАЛИЗОВАНА
 
-Разделить `MpcbIotCore` от `PeriphManager` через интерфейс `ITransport`.
-Даёт возможность добавить Zigbee без переписывания периферии.
+`MpcbIotCore : public ITransport` (publish/subscribe override).
+`PeriphManager::begin()` принимает `ITransport&` — не знает про WiFi/Zigbee/etc.
+Будущий `MpcbZigbeeCore` подключается без изменений в PeriphManager.
 
 ### OTA via MQTT (ждём сервер)
 

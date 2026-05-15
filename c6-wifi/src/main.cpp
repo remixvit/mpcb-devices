@@ -53,16 +53,18 @@ void setup() {
             case IotState::AP_PORTAL:     setColor(30, 15,  0); break; // жёлтый
             case IotState::CONNECTING:    setColor( 0,  0, 30); break; // синий
             case IotState::CONFIG_SERVER: setColor( 0, 15, 30); break; // голубой
-            case IotState::RUNNING:
+            case IotState::RUNNING: {
                 // 2× зелёный пульс → подключились
                 for (int i = 0; i < 2; i++) {
                     setColor(0, 60, 0); delay(150);
                     setColor(0,  0, 0); delay(100);
                 }
                 // Загружаем deviceId здесь — iot.begin() уже сохранил его в NVS
-                deviceId = iot.storage().loadDevice().deviceId;
-                pm.begin(deviceId, iot.storage(), iot);
+                DeviceConfig dev = iot.storage().loadDevice();
+                deviceId = dev.deviceId;
+                pm.begin(deviceId, dev.deviceName, iot.storage(), iot);
                 break;
+            }
             default: break;
         }
     });
