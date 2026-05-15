@@ -21,7 +21,10 @@ mpcb-devices/
 - **IP:** `192.168.1.41`, mDNS: `http://mpcb-FCC8.local`
 - **GPIO4** — реле Gate, **GPIO3** — кнопка (INPUT_PULLUP), **GPIO8** — WS2812 статус
 - **Лог:** `curl http://192.168.1.41/api/log-text`
-- **Прошивка:** `& "$env:USERPROFILE\.platformio\penv\Scripts\pio.exe" run -e c6-wifi --target upload`
+- **Прошивка (OTA):** `http://192.168.1.41/ota` — загрузить `.pio\build\c6-wifi\firmware.bin` через браузер
+- **Прошивка (USB):** COM10 сейчас недоступен (повреждён при обратной полярности VL53)
+
+> ⚠ Пока COM10 не работает — собирать `pio run -e c6-wifi`, затем заливать через OTA веб-интерфейс.
 
 ## Сборка и прошивка
 
@@ -248,6 +251,11 @@ Tare-offset: `{"tare":true}` / `{"tare_reset":true}` через MQTT set. Хра
 `MpcbIotCore : public ITransport` (publish/subscribe override).
 `PeriphManager::begin()` принимает `ITransport&` — не знает про WiFi/Zigbee/etc.
 Будущий `MpcbZigbeeCore` подключается без изменений в PeriphManager.
+
+### VL53L1X — ждём новый модуль
+
+Старый модуль сгорел (обратная полярность). Soft-reset диагностика уже в коде.
+После покупки — подключить, проверить что `modelId=0xEA` и `distance` публикуется.
 
 ### OTA via MQTT (ждём сервер)
 
