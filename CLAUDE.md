@@ -59,6 +59,8 @@ ESP32-C6**FH4** — встроенный (embedded) flash внутри чипа,
 
 > ⚠ VL53L1X после `startContinuous()` при soft reset (ESP.restart()) требует soft-reset сенсора (запись 0x00/0x01 в регистр 0x0000) перед повторным `init()`, иначе MODEL_ID регистр 0x010F возвращает 0x00 вместо 0xEA.
 
+> ⚠ VL53L0X (Pololu) после soft reset: `init()` падает в `getSpadInfo()` — NVM hardware не сбрасывается 0xBF. `getSpadInfo()` при timeout НЕ восстанавливает регистры (оставляет `0xFF=0x07, 0x81=0x01, 0x80=0x01` в private-mode). warmStart в PeriphManager сначала применяет cleanup (зеркало строк 905–912 VL53L0X.cpp), затем вручную дописывает StaticInit + RefCalibration через публичный API.
+
 > ⚠ I2C init в PeriphManager::begin() делает bus recovery (9 тактов SCL) перед Wire.begin() — это нужно для корректного переключения GPIO mux после soft reset.
 
 ## Библиотека mpcb-iot-core
