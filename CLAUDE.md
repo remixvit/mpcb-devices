@@ -22,9 +22,7 @@ mpcb-devices/
 - **GPIO4** — реле Gate, **GPIO3** — кнопка (INPUT_PULLUP), **GPIO8** — WS2812 статус
 - **Лог:** `curl http://192.168.1.41/api/log-text`
 - **Прошивка (OTA):** `http://192.168.1.41/ota` — загрузить `.pio\build\c6-wifi\firmware.bin` через браузер
-- **Прошивка (USB):** COM10 сейчас недоступен (повреждён при обратной полярности VL53)
-
-> ⚠ Пока COM10 не работает — собирать `pio run -e c6-wifi`, затем заливать через OTA веб-интерфейс.
+- **Прошивка (USB):** `pio run -e c6-wifi --target upload --upload-port COM10`
 
 ## Сборка и прошивка
 
@@ -132,11 +130,12 @@ LWT, announce, config, state publish, +/set subscribe, TLS.
 | `dht22` | Temp+humidity, 30с, `__has_include<DHT.h>` | `{"temp":float,"humidity":float}` |
 | `ds18b20` | Температура, 30с, `__has_include<DallasTemperature.h>` | `{"temp":float}` |
 | `aht10` | I2C temp+hum, 30с, `__has_include<Adafruit_AHTX0.h>`, адреса 0x38/0x39 | `{"temp":float,"humidity":float}` |
-| `vl53` | ToF дистанция мм, 500мс, auto-detect L0X/L1X, адрес 0x29 | `{"distance": int}` |
+| `vl53` | ToF дистанция мм, 500мс, auto-detect L0X/L1X по modelId, адрес 0x29 | `{"distance": int}` |
 | `pcf_relay` | PCF8574 выход | `{"on": bool}` |
 | `pcf_button` | PCF8574 вход | `{"pressed": bool}` |
 
-VL53: если оба lib (L0X и L1X) скомпилированы — runtime detection: пробует L1X, fallback L0X.
+VL53: runtime detection по reg 0xC0 (0xEE=L0X → Pololu vl53l0x-arduino, 0xEA=L1X → Pololu vl53l1x-arduino).
+**Не использовать Adafruit_VL53L0X** — вызывает Wire.begin() внутри, ломает I2C на ESP32-C6.
 
 ### Dashboard (веб UI)
 `GET /dash` — страница с live-состоянием всех периферий, обновление каждые 2с.
@@ -185,10 +184,10 @@ class ITransport {
 
 ## Flash/RAM бюджет (c6-wifi, актуально 2026-05)
 
-Замеры: WiFi+BLE+MQTT+AHT10+VL53L0X+VL53L1X+PCF8574+rules+analog_cal+dashboard+ITransport
+Замеры: WiFi+BLE+MQTT+AHT10+VL53L0X(Pololu)+VL53L1X(Pololu)+PCF8574+rules+analog_cal+dashboard+ITransport
 ```
-Flash: 88.6%  (1625 КБ из 1835 КБ)  — свободно ~210 КБ
-RAM:   19.2%  (63 КБ из 320 КБ)     — свободно ~254 КБ
+Flash: 88.0%  (1614 КБ из 1835 КБ)  — свободно ~221 КБ
+RAM:   19.0%  (62 КБ из 320 КБ)     — свободно ~256 КБ
 ```
 
 Крупнейшие константы в Flash:
