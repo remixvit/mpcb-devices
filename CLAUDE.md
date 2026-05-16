@@ -131,6 +131,7 @@ LWT, announce, config, state publish, +/set subscribe, TLS.
 | `ds18b20` | Температура, 30с, `__has_include<DallasTemperature.h>` | `{"temp":float}` |
 | `aht10` | I2C temp+hum, 30с, `__has_include<Adafruit_AHTX0.h>`, адреса 0x38/0x39 | `{"temp":float,"humidity":float}` |
 | `vl53` | ToF дистанция мм, 500мс, auto-detect L0X/L1X по modelId, адрес 0x29 | `{"distance": int}` |
+| `ccs811` | TVOC+eCO2, 10с, нативный I2C (без библиотеки), адрес 0x5A/0x5B | `{"eco2": int, "tvoc": int}` |
 | `pcf_relay` | PCF8574 выход | `{"on": bool}` |
 | `pcf_button` | PCF8574 вход | `{"pressed": bool}` |
 
