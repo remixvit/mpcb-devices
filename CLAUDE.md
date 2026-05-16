@@ -85,7 +85,7 @@ ESP32-C6**FH4** — встроенный (embedded) flash внутри чипа,
 ```
 announce → subscribe mpcb/devices/{id}/+/set → config → {key}/state
 ```
-Датчики (dht22, ds18b20, aht10, vl53) НЕ публикуют state при старте — только из loop после первого чтения.
+Датчики (dht22, ds18b20, aht10, vl53l0, vl53l1) НЕ публикуют state при старте — только из loop после первого чтения.
 
 Топики:
 - `mpcb/devices/{id}/announce` — LWT + старт
@@ -132,13 +132,15 @@ LWT, announce, config, state publish, +/set subscribe, TLS.
 | `dht22` | Temp+humidity, 30с, `__has_include<DHT.h>` | `{"temp":float,"humidity":float}` |
 | `ds18b20` | Температура, 30с, `__has_include<DallasTemperature.h>` | `{"temp":float}` |
 | `aht10` | I2C temp+hum, 30с, `__has_include<Adafruit_AHTX0.h>`, адреса 0x38/0x39 | `{"temp":float,"humidity":float}` |
-| `vl53` | ToF дистанция мм, 500мс, auto-detect L0X/L1X по modelId, адрес 0x29 | `{"distance": int}` |
+| `vl53l0` | VL53L0X ToF дистанция мм, 500мс, Pololu lib, адрес 0x29 | `{"distance": int}` |
+| `vl53l1` | VL53L1X ToF дистанция мм, 500мс, Pololu lib, адрес 0x29 | `{"distance": int}` |
 | `ccs811` | TVOC+eCO2, 10с, нативный I2C (без библиотеки), адрес 0x5A/0x5B | `{"eco2": int, "tvoc": int}` |
 | `pcf_relay` | PCF8574 выход | `{"on": bool}` |
 | `pcf_button` | PCF8574 вход | `{"pressed": bool}` |
 
-VL53: runtime detection по reg 0xC0 (0xEE=L0X → Pololu vl53l0x-arduino, 0xEA=L1X → Pololu vl53l1x-arduino).
+VL53: два отдельных типа в UI — `vl53l0` (VL53L0X) и `vl53l1` (VL53L1X). Оба живут на адресе 0x29, подключать по одному.
 **Не использовать Adafruit_VL53L0X** — вызывает Wire.begin() внутри, ломает I2C на ESP32-C6.
+VL53L1X: `Wire.setClock(400000)` + `setMeasurementTimingBudget(200000)` + `startContinuous(210)` — 200мс бюджет нужен для надёжного измерения на дистанции 1.5м+ (50мс даёт SignalFail). Чтение: `read(true)` блокирующий + `!timeoutOccurred() && mm > 0 && mm < 8190`.
 
 ### Dashboard (веб UI)
 `GET /dash` — страница с live-состоянием всех периферий, обновление каждые 2с.
@@ -156,15 +158,15 @@ VL53: runtime detection по reg 0xC0 (0xEE=L0X → Pololu vl53l0x-arduino, 0xEA
 - Dropdown пинов (forbidden/warn/safe)
 - I2C типы: per-type адреса + подсказка `SDA→19  SCL→18`
   - aht10: 0x38, 0x39
-  - vl53: 0x29
+  - vl53l0, vl53l1: 0x29
   - pcf8574: 0x20–0x27
 - Автопереключение pin↔addr при смене типа (в т.ч. I2C→I2C)
 - Per-type limits (UI + серверная валидация):
-  relay:8, button:8, analog:4, pwm:4, neopixel:2, dht22:2, ds18b20:2, aht10:2, vl53:1, pcf8574:2
+  relay:8, button:8, analog:4, pwm:4, neopixel:2, dht22:2, ds18b20:2, aht10:2, vl53l0:1, vl53l1:1, pcf8574:2
 - Кнопка "Перезагрузить" + хинт "Изменения требуют перезагрузки"
 
 ### Rules UI
-- trigger = только входы (button/analog/dht22/ds18b20/aht10/vl53)
+- trigger = только входы (button/analog/dht22/ds18b20/aht10/vl53l0/vl53l1)
 - target = только выходы (relay/pwm/neopixel/pcf_relay)
 - события и поле порога меняются динамически по типу триггера
 
@@ -189,7 +191,7 @@ class ITransport {
 
 Замеры: WiFi+BLE+MQTT+AHT10+VL53L0X(Pololu)+VL53L1X(Pololu)+PCF8574+rules+analog_cal+dashboard+ITransport
 ```
-Flash: 88.0%  (1614 КБ из 1835 КБ)  — свободно ~221 КБ
+Flash: 88.1%  (1617 КБ из 1835 КБ)  — свободно ~218 КБ
 RAM:   19.0%  (62 КБ из 320 КБ)     — свободно ~256 КБ
 ```
 
@@ -256,10 +258,15 @@ Tare-offset: `{"tare":true}` / `{"tare_reset":true}` через MQTT set. Хра
 
 ### ✅ VL53 — РЕАЛИЗОВАН (L0X и L1X)
 
-Auto-detect по `modelId` (0xEE=L0X, 0xEA=L1X) перед инициализацией.
-**Важно:** для L0X используется Pololu библиотека (`pololu/vl53l0x-arduino`), НЕ Adafruit.
-Причина: Adafruit вызывает `Wire.begin()` внутри `begin()`, что ломает I2C на ESP32-C6.
+Два явных типа в UI: `vl53l0` и `vl53l1` — пользователь выбирает нужный чип.
+**Не использовать Adafruit_VL53L0X** — вызывает Wire.begin() внутри begin(), ломает I2C на ESP32-C6. Использовать Pololu (`pololu/vl53l0x-arduino`, `pololu/vl53l1x-arduino`).
 L0X и L1X живут на одном адресе 0x29 — подключать по одному.
+
+**VL53L1X нюансы:**
+- После ESP.restart() нужен soft-reset сенсора (0x0000 ← 0x00, затем 0x01) перед init(), иначе MODEL_ID = 0x00
+- `Wire.setClock(400000)` обязателен — без него L1X работает нестабильно
+- Бюджет 50мс → SignalFail на дистанции 1.5м+; использовать 200мс + startContinuous(210)
+- Чтение: `read(true)` блокирующий, фильтр: `!timeoutOccurred() && mm > 0 && mm < 8190`
 
 ### OTA via MQTT (ждём сервер)
 
