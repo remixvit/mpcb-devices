@@ -252,10 +252,12 @@ Tare-offset: `{"tare":true}` / `{"tare_reset":true}` через MQTT set. Хра
 `PeriphManager::begin()` принимает `ITransport&` — не знает про WiFi/Zigbee/etc.
 Будущий `MpcbZigbeeCore` подключается без изменений в PeriphManager.
 
-### VL53L1X — ждём новый модуль
+### ✅ VL53 — РЕАЛИЗОВАН (L0X и L1X)
 
-Старый модуль сгорел (обратная полярность). Soft-reset диагностика уже в коде.
-После покупки — подключить, проверить что `modelId=0xEA` и `distance` публикуется.
+Auto-detect по `modelId` (0xEE=L0X, 0xEA=L1X) перед инициализацией.
+**Важно:** для L0X используется Pololu библиотека (`pololu/vl53l0x-arduino`), НЕ Adafruit.
+Причина: Adafruit вызывает `Wire.begin()` внутри `begin()`, что ломает I2C на ESP32-C6.
+L0X и L1X живут на одном адресе 0x29 — подключать по одному.
 
 ### OTA via MQTT (ждём сервер)
 
