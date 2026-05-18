@@ -99,13 +99,13 @@ void setup() {
     iot.onDashState([](){ return pm.getStateJson(); });
     iot.onDashCmd([](const String& key, const String& payload){ pm.handleLocalCmd(key, payload); });
 
-    // ── Peripherals FIRST: I2C + sensors ready before network ───────────────
-    pm.begin(deviceId, devName, iot.storage(), iot);
-
-    // ── Network AFTER peripherals: WiFi → mDNS → MQTT ───────────────────────
+    // ── Network FIRST: BLE startup disrupts I2C GPIO mux on ESP32-C6 ────────
     iot.begin(devName);
-    // pm already initialized — onMqttConnected callback works correctly
-    pm.resetI2C();  // BLE/WiFi init may disrupt I2C GPIO mux on ESP32-C6
+
+    // ── Peripherals AFTER BLE: pm.begin() does bus recovery for clean I2C ───
+    pm.begin(deviceId, devName, iot.storage(), iot);
+    // If MQTT connected during iot.begin() (before pm was ready), publish now
+    if (iot.state() == IotState::RUNNING) pm.onMqttConnected();
 
     Log.log("App", "Device ready: " + deviceId);
 }

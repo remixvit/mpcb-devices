@@ -61,7 +61,17 @@ ESP32-C6**FH4** — встроенный (embedded) flash внутри чипа,
 
 > ⚠ VL53L0X (Pololu) после soft reset: `init()` падает в `getSpadInfo()` — NVM hardware не сбрасывается 0xBF. `getSpadInfo()` при timeout НЕ восстанавливает регистры (оставляет `0xFF=0x07, 0x81=0x01, 0x80=0x01` в private-mode). warmStart в PeriphManager сначала применяет cleanup (зеркало строк 905–912 VL53L0X.cpp), затем вручную дописывает StaticInit + RefCalibration через публичный API.
 
-> ⚠ I2C init в PeriphManager::begin() делает bus recovery (9 тактов SCL) перед Wire.begin() — это нужно для корректного переключения GPIO mux после soft reset.
+> ⚠ Порядок запуска в main.cpp: `iot.begin()` первым (BLE стартует и нарушает GPIO mux), затем `pm.begin()` (bus recovery + Wire.begin(400kHz) + инициализация сенсоров). Обратный порядок ломает I2C: Wire.end() внутри resetI2C() прерывает работающий VL53L1X startContinuous, шина залипает. После pm.begin() нужен явный `pm.onMqttConnected()` если `iot.state() == RUNNING`.
+
+> ⚠ Wire.end() нельзя вызывать внутри _initPeriph отдельных устройств — прерывает уже инициализированные. Bus recovery и Wire.begin(400kHz) — один раз в pm.begin() перед всеми _initPeriph.
+
+> ⚠ Wire.end() НИКОГДА не вызывать в loop() — прерывает работающий VL53 continuous mode, после этого VL53 стабильно возвращает invalid (mm=65535 / status=99). Bus recovery с Wire.end() допустима только в pm.begin().
+
+> ⚠ VL53 (L0X/L1X) `init()` имеет внутренние I2C таймауты (часть getSpadInfo / setVcselPulsePeriod / performSingleRefCalibration), которые оставляют SDA залипшим. Если сразу после init() запустить startContinuous и попытаться читать другие I2C устройства (AHT10) — получим err=5. Архитектура в PeriphManager: `_initPeriph` НЕ вызывает startContinuous; после цикла всех инитов в `pm.begin()` делается одна bus recovery (9 SCL + Wire.end() + Wire.begin(400kHz)), и только потом для всех инициализированных VL53 вызывается startContinuous. В loop() bus recovery не нужна.
+
+> ⚠ VL53L0X Long Range mode (`setSignalRateLimit(0.1f)` + `setVcselPulsePeriod(PreRange,18)` + `setVcselPulsePeriod(FinalRange,14)` + `setMeasurementTimingBudget(200000)`) — на ESP32-C6 эти вызовы дают каскад I2C таймаутов (~6 секунд) и оставляют сенсор в полу-сконфигурированном состоянии: continuous mode даёт mm=65535 постоянно. Использовать дефолтные настройки: `setMeasurementTimingBudget(33000)` + `startContinuous(35)`.
+
+> ⚠ VL53L1X status=99 (RANGESTATUS_NONE_RETURN) — нет отражённого сигнала, цель вне зоны видимости. Не ошибка. Фильтр: `!timeoutOccurred() && mm > 0 && mm < 8190`.
 
 ## Библиотека mpcb-iot-core
 
