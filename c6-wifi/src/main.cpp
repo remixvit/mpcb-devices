@@ -1,13 +1,13 @@
 #include <Arduino.h>
-#include <Adafruit_NeoPixel.h>
+#include <neopixel/WS2812Strip.h>
 #include <MpcbIotCore.h>
 
 // ─── System LED (GPIO8 — встроенный WS2812, статус устройства) ──────────────
 #define STATUS_PIN 8
-Adafruit_NeoPixel statusLed(1, STATUS_PIN, NEO_GRB + NEO_KHZ800);
+WS2812Strip statusLed;
 
 void setColor(uint8_t r, uint8_t g, uint8_t b) {
-    statusLed.setPixelColor(0, statusLed.Color(r, g, b));
+    statusLed.fill(r, g, b, 50);  // ~20% brightness
     statusLed.show();
 }
 
@@ -31,8 +31,7 @@ void setup() {
     Serial.begin(115200);
     delay(200);
 
-    statusLed.begin();
-    statusLed.setBrightness(50);
+    statusLed.begin(STATUS_PIN, 1);
     setColor(0, 0, 30);  // blue — booting
 
     // ── NVS + MQTT defaults ────────────────────────────────────────────────
