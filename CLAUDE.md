@@ -81,6 +81,7 @@ ESP32-C6**FH4** — встроенный (embedded) flash внутри чипа,
 Ключевые файлы (пути от корня репо):
 - `lib/mpcb-iot-core/src/MpcbIotCore.h/.cpp` — WiFi, MQTT, BLE, FSM
 - `lib/mpcb-iot-core/src/peripheral/PeriphManager.h/.cpp` — GPIO, rules engine, MQTT
+- `lib/mpcb-iot-core/src/neopixel/WS2812Strip.h/.cpp` — IDF5 RMT драйвер WS2812, без внешних библиотек
 - `lib/mpcb-iot-core/src/web/ConfigServer.cpp` — веб-интерфейс (тёмная тема, #7b2feb accent)
 - `lib/mpcb-iot-core/src/storage/ConfigStorage.h/.cpp` — NVS хранилище
 - `lib/mpcb-iot-core/src/log/RingLog.h/.cpp` — кольцевой лог (60 записей, /api/log-text)
@@ -138,7 +139,7 @@ LWT, announce, config, state publish, +/set subscribe, TLS.
 | `button` | Цифровой вход, 30мс debounce | `{"pressed": bool}` |
 | `analog` | ADC, каждые 10с | `{"value": int, "voltage": float}` |
 | `pwm` | ШИМ 0–255 | `{"duty": int}` |
-| `neopixel` | WS2812 ack-only | `{"r":int,"g":int,"b":int}` |
+| `neopixel` | WS2812 лента, IDF5 RMT, до 300–500 LED, 8 эффектов | state: `{"on":bool,"effect":"...","r":N,"g":N,"b":N,"brightness":N,"pixels":N}` |
 | `dht22` | Temp+humidity, 30с, `__has_include<DHT.h>` | `{"temp":float,"humidity":float}` |
 | `ds18b20` | Температура, 30с, `__has_include<DallasTemperature.h>` | `{"temp":float}` |
 | `aht10` | I2C temp+hum, 30с, `__has_include<Adafruit_AHTX0.h>`, адреса 0x38/0x39 | `{"temp":float,"humidity":float}` |
@@ -157,6 +158,7 @@ VL53L1X: `Wire.setClock(400000)` + `setMeasurementTimingBudget(200000)` + `start
 - Реле: ВКЛ/ВЫКЛ + кнопка управления прямо из браузера (без MQTT)
 - Кнопки: индикатор нажата/отпущена
 - Датчики: числовые значения (temp, humidity, distance, converted)
+- Neopixel: цветной квадратик + имя эффекта; управление — color picker, слайдер яркости, dropdown эффектов, кнопка 🌈 (rainbow тест)
 - Проводка: `iot.onDashState(cb)` + `iot.onDashCmd(cb)` в main.cpp
 
 ### Rules engine
@@ -199,10 +201,10 @@ class ITransport {
 
 ## Flash/RAM бюджет (c6-wifi, актуально 2026-05)
 
-Замеры: WiFi+BLE+MQTT+AHT10+VL53L0X(Pololu)+VL53L1X(Pololu)+PCF8574+rules+analog_cal+dashboard+ITransport
+Замеры: WiFi+BLE+MQTT+AHT10+VL53L0X(Pololu)+VL53L1X(Pololu)+PCF8574+rules+analog_cal+dashboard+ITransport+WS2812Strip+neopixel_effects
 ```
-Flash: 88.1%  (1617 КБ из 1835 КБ)  — свободно ~218 КБ
-RAM:   19.0%  (62 КБ из 320 КБ)     — свободно ~256 КБ
+Flash: 88.6%  (1626 КБ из 1835 КБ)  — свободно ~209 КБ
+RAM:   19.4%  (63 КБ из 320 КБ)     — свободно ~257 КБ
 ```
 
 Крупнейшие константы в Flash:
@@ -213,7 +215,7 @@ RAM:   19.0%  (62 КБ из 320 КБ)     — свободно ~256 КБ
 | `PORTAL_HTML` | 3.4 КБ |
 | `CONFIG_CSS` | 3.2 КБ |
 
-**Критическая отметка — 90% (1651 КБ).** До неё ~32 КБ.
+**Критическая отметка — 90% (1651 КБ).** До неё ~25 КБ.
 
 **Правило:** после каждого крупного добавления — `pio run -e c6-wifi`, зафиксировать % здесь.
 
@@ -265,6 +267,37 @@ Tare-offset: `{"tare":true}` / `{"tare_reset":true}` через MQTT set. Хра
 `MpcbIotCore : public ITransport` (publish/subscribe override).
 `PeriphManager::begin()` принимает `ITransport&` — не знает про WiFi/Zigbee/etc.
 Будущий `MpcbZigbeeCore` подключается без изменений в PeriphManager.
+
+### ✅ NeoPixel лента — РЕАЛИЗОВАНА
+
+Тип `neopixel` — полноценный драйвер адресных лент WS2812/WS2812B.
+
+**Драйвер:** `WS2812Strip` — собственная реализация, без внешних библиотек.
+Использует ESP-IDF 5 RMT hardware (`driver/rmt_tx.h` + `driver/rmt_encoder.h`),
+GRB byte order, аппаратный DMA, работает на C3/C6 и любом ESP32-IDF5.
+В `main.cpp`: `#include <neopixel/WS2812Strip.h>` (не `<WS2812Strip.h>` — лежит в подкаталоге).
+Статусный LED GPIO8 в c6-wifi/main.cpp также переведён на WS2812Strip (убрана Adafruit).
+
+**Эффекты (8 штук):**
+| Эффект | Описание | `neoSpeed` |
+|--------|----------|-----------|
+| `off` | Выключено | — |
+| `static` | Статический цвет | — |
+| `blink` | Мигание (сигнализация) | интервал вкл/выкл, мс |
+| `breathe` | Плавное дыхание | период полного цикла, мс |
+| `rainbow` | Радуга по всей ленте | шаг каждые N мс |
+| `strobe` | Строб (быстрое мигание) | интервал, мс |
+| `sunrise` | Рассвет (256 шагов тёмно-красный → тёплый белый → STATIC) | шаг каждые N мс |
+| `wipe` | Последовательное заполнение | интервал на пиксель, мс |
+
+**MQTT set:** `{"effect":"blink","r":255,"g":0,"b":0,"speed":400,"count":10,"brightness":200}`
+- `count`: количество повторений (-1 = бесконечно)
+- `{"on":false}` — выключить
+**MQTT state:** `{"on":bool,"effect":"blink","r":255,"g":0,"b":0,"brightness":200,"pixels":30}`
+
+**Конфигурация:** `pixelCount` — количество LED в ленте (UI-поле + хранится в NVS).
+Практический потолок: ~300–500 LED (show() блокирует ~30 мкс × N; 300 LED = 9 мс).
+Лимит в UI: 2 neopixel периферии на устройство.
 
 ### ✅ VL53 — РЕАЛИЗОВАН (L0X и L1X)
 
