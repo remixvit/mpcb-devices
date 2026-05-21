@@ -1,10 +1,10 @@
 #include <Arduino.h>
 #include <MpcbIotCore.h>
 
-// ─── System LED (GPIO8 — onboard blue LED, active LOW) ───────────────────
+// ─── System LED (GPIO8 — onboard blue LED, active HIGH) ──────────────────
 #define LED_PIN 8
-#define LED_ON  LOW
-#define LED_OFF HIGH
+#define LED_ON  HIGH
+#define LED_OFF LOW
 
 // ─── Core ────────────────────────────────────────────────────────────────────
 MpcbIotCore   iot;
