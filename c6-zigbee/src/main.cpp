@@ -1,36 +1,34 @@
 #include <Arduino.h>
-#include <ZigbeeCore.h>
-#include <ep/ZigbeeLight.h>
+#include <zigbee/MpcbZigbeeCore.h>
+#include <peripheral/PeriphManager.h>
 #include <neopixel/WS2812Strip.h>
 
 // ─── Пины ────────────────────────────────────────────────────────────────────
-#define RELAY_PIN   15  // реле (активный HIGH)
-#define BUTTON_PIN  9   // BOOT кнопка — factory reset (3 сек)
+#define BUTTON_PIN  9   // BOOT — factory reset Zigbee (3 сек)
 #define LED_PIN     8   // WS2812 статус
 
-// ─── Zigbee endpoint ─────────────────────────────────────────────────────────
-ZigbeeLight zbRelay(1);  // endpoint 1 — On/Off Light (кластер 0x0006)
-
-// ─── Статусный LED ───────────────────────────────────────────────────────────
-WS2812Strip statusLed;
+// ─── Core ────────────────────────────────────────────────────────────────────
+MpcbZigbeeCore core;
+PeriphManager  pm;
+WS2812Strip    statusLed;
 
 void setLed(uint8_t r, uint8_t g, uint8_t b) {
     statusLed.fill(r, g, b, 40);
     statusLed.show();
 }
 
-// ─── Blink state (поиск сети) ────────────────────────────────────────────────
-static bool     _searching    = true;
-static uint32_t _blinkLast    = 0;
-static bool     _blinkOn      = false;
+// Мигание синим — поиск сети
+static uint32_t _blinkLast = 0;
+static bool     _blinkOn   = false;
+static bool     _inNetwork = false;
 
 void blinkLoop() {
-    if (!_searching) return;
+    if (_inNetwork) return;
     uint32_t now = millis();
     if (now - _blinkLast >= 500) {
         _blinkLast = now;
         _blinkOn   = !_blinkOn;
-        if (_blinkOn) setLed(0, 0, 30);  // blue blink = ищем сеть
+        if (_blinkOn) setLed(0, 0, 30);
         else          setLed(0, 0,  0);
     }
 }
@@ -40,34 +38,37 @@ void setup() {
     Serial.begin(115200);
     delay(100);
 
-    pinMode(RELAY_PIN, OUTPUT);
-    digitalWrite(RELAY_PIN, LOW);
     pinMode(BUTTON_PIN, INPUT_PULLUP);
-
     statusLed.begin(LED_PIN, 1);
-    setLed(0, 0, 30);  // blue = загрузка
+    setLed(0, 0, 30);  // синий = загрузка
 
-    // ── Zigbee endpoint ──────────────────────────────────────────────────────
-    zbRelay.setManufacturerAndModel("mpcbstudio", "mpcb-relay");
-    zbRelay.onLightChange([](bool on) {
-        _searching = false;  // команда пришла — значит в сети
-        digitalWrite(RELAY_PIN, on ? HIGH : LOW);
-        setLed(on ? 0 : 0, on ? 60 : 0, 0);  // зелёный = реле вкл, выкл = темно
+    core.onMessage([](const String& t, const String& p) {
+        pm.handleMessage(t, p);
+    });
+    core.onReady([]() {
+        _inNetwork = true;
+        setLed(0, 8, 0);  // тусклый зелёный = в сети
+        pm.onMqttConnected();
     });
 
-    Zigbee.addEndpoint(&zbRelay);
-    // erase_nvs=false — сохраняем сеть между перезагрузками
-    Zigbee.begin(ZIGBEE_END_DEVICE, false);
+    core.begin("mpcb-c6z");
+    pm.begin(core.deviceId(), "mpcb-c6z", core.storage(), core);
 
-    // Восстановить последнее состояние реле из NVS после ребута
-    zbRelay.restoreLight();
+    // Если Zigbee уже был подключён (реджойн после ребута)
+    if (Zigbee.isStarted()) {
+        _inNetwork = true;
+        setLed(0, 8, 0);
+        pm.onMqttConnected();
+    }
 }
 
 // ─── Loop ────────────────────────────────────────────────────────────────────
 void loop() {
+    core.loop();
+    pm.loop();
     blinkLoop();
 
-    // BOOT кнопка: удержание 3 сек = factory reset (покинуть сеть + стереть NVS)
+    // BOOT 3 сек = покинуть Zigbee сеть + factory reset
     if (digitalRead(BUTTON_PIN) == LOW) {
         setLed(30, 15, 0);  // жёлтый = кнопка нажата
         uint32_t t = millis();
@@ -75,10 +76,9 @@ void loop() {
             if (millis() - t > 3000) {
                 setLed(30, 0, 0);  // красный = сброс
                 delay(500);
-                Zigbee.factoryReset();  // покидаем сеть + reboot
+                Zigbee.factoryReset();
                 return;
             }
         }
-        // Короткое нажатие — ничего не делаем
     }
 }
