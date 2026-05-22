@@ -4,7 +4,7 @@
 #include <neopixel/WS2812Strip.h>
 
 // ─── Пины ────────────────────────────────────────────────────────────────────
-#define RELAY_PIN   4   // реле (активный HIGH)
+#define RELAY_PIN   15  // реле (активный HIGH)
 #define BUTTON_PIN  9   // BOOT кнопка — factory reset (3 сек)
 #define LED_PIN     8   // WS2812 статус
 
