@@ -11,7 +11,7 @@ mpcb-devices/
 ├── lib/mpcb-iot-core/   ← git submodule (github.com/remixvit/mpcb-iot-core)
 ├── c6-wifi/             ← ESP32-C6 WiFi+BLE, рабочее устройство "Ворота цех"
 ├── c3/                  ← ESP32-C3 WiFi+BLE+DeepSleep (в разработке)
-├── c6-zigbee/           ← ESP32-C6 Zigbee+BLE (запланировано)
+├── c6-zigbee/           ← ESP32-C6 Zigbee+BLE (в разработке, работает)
 └── h2/                  ← ESP32-H2 Zigbee+BLE батарейный (запланировано)
 ```
 
@@ -195,7 +195,7 @@ class ITransport {
     virtual bool subscribe(const String& topic) = 0;
 };
 // MpcbIotCore    : public ITransport  ← C6 WiFi  ✅ реализовано
-// MpcbZigbeeCore : public ITransport  ← C6/H2 Zigbee (будущее)
+// MpcbZigbeeCore : public ITransport  ← C6/H2 Zigbee ✅ реализовано
 // PeriphManager принимает ITransport& — работает с любым транспортом ✅
 ```
 
@@ -266,7 +266,7 @@ Tare-offset: `{"tare":true}` / `{"tare_reset":true}` через MQTT set. Хра
 
 `MpcbIotCore : public ITransport` (publish/subscribe override).
 `PeriphManager::begin()` принимает `ITransport&` — не знает про WiFi/Zigbee/etc.
-Будущий `MpcbZigbeeCore` подключается без изменений в PeriphManager.
+Реализован `MpcbZigbeeCore` — подключается без изменений в PeriphManager.
 
 ### ✅ NeoPixel лента — РЕАЛИЗОВАНА
 
@@ -317,18 +317,92 @@ L0X и L1X живут на одном адресе 0x29 — подключать
 Сервер пришлёт `{"cmd":"ota","url":"https://..."}` через MQTT.
 `HTTPClient` скачивает `.bin`, `Update.h` прошивает.
 
+### ✅ C6 Zigbee — РАБОТАЕТ
+
+`c6-zigbee/` — ESP32-C6 Zigbee End Device + BLE конфигуратор.
+
+- **Транспорт:** `MpcbZigbeeCore : public ITransport` → PeriphManager работает без изменений
+- **Эндпоинты:** создаются из NVS при старте (`_createEndpoints()`); relay → `ZigbeeLight`, temp → `ZigbeeTempSensor`
+- **BLE:** конфигуратор + OTA; коэкзистенция с Zigbee через `updateConnParams(handle, 80, 160, 0, 600)` (100–200ms интервал, 6s timeout)
+- **Ключи периферии:** если приложение не передаёт `key` — деривируется из `label` через `_sanitize` (ArduinoJson 7 возвращает строку `"null"` для отсутствующего поля)
+- **LED статус:** зелёный = Zigbee joined + в сети Z2M, синий мигает = ищет сеть
+- **Сброс Zigbee:** удержать BOOT (GPIO9) 3 секунды → `Zigbee.factoryReset()` → устройство выходит из сети и ищет новую
+
+**Партиции:** `c6-zigbee/partitions_8mb_zb.csv` — слоты по 1.75MB (firmware ~1.6MB).
+
 ### Новые устройства
 
 | Устройство | Трудозатраты | Основная работа |
 |------------|-------------|-----------------|
 | C3 (WiFi) | ~полдня | Пиноут C3 в ConfigServer |
-| C6 Zigbee | ~2 нед. | MpcbZigbeeCore + ITransport |
-| H2 (battery) | ~3 нед. | + PowerManager deep sleep |
+| H2 (battery) | ~3 нед. | PowerManager deep sleep + MpcbZigbeeCore |
 
 ### Flutter app (`e:/Projects/mpcb-app`)
 - GPIO экран: тумблеры реле, значения датчиков
 - Rules экран
 - Маркер PS→MC
+
+## Zigbee2MQTT — добавление новых устройств
+
+### Инфраструктура
+
+- **Z2M на сервере:** Docker, Portainer, `/home/vit/zigbee2mqtt/data` → `/app/data` внутри контейнера
+- **Донгл:** вставлен в сервер (не в локальную машину)
+- **Разрешить сопряжение:** Z2M UI → "Разрешить подключение" (permit join)
+- **Сброс устройства:** удержать BOOT 3 сек → `Zigbee.factoryReset()`, потом permit join
+
+### Конвертеры Z2M
+
+Каждое новое устройство с уникальным `modelID` / `manufacturerName` нужно добавить в Z2M, иначе показывает "не поддерживается: generated".
+
+**Путь к внешним конвертерам на сервере:** `/home/vit/zigbee2mqtt/data/external_converters/`
+
+**Формат файла** (`.mjs`):
+```javascript
+import {onOff} from 'zigbee-herdsman-converters/lib/modernExtend';
+
+export default {
+    zigbeeModel: ['mpcb-relay'],   // modelID из прошивки (setManufacturerAndModel)
+    model: 'mpcb-relay',
+    vendor: 'mpcbstudio',
+    description: 'MPCB Smart Relay',
+    extend: [onOff({powerOnBehavior: false})],
+};
+```
+
+**Готовые конвертеры:** `D:\Projects\mpcb-app\zigbee2mqtt\`
+- `mpcb_relay.mjs` — реле (OnOff)
+
+**Деплой нового конвертера:**
+```bash
+# На сервере по SSH:
+mkdir -p /home/vit/zigbee2mqtt/data/external_converters
+cp mpcb_relay.mjs /home/vit/zigbee2mqtt/data/external_converters/
+docker restart zigbee2mqtt
+# Проверить: в логах Z2M появится "Loaded external converters: mpcb_relay.mjs"
+```
+
+### Официальный PR в zigbee-herdsman-converters
+
+Все устройства mpcbstudio добавлены в официальный репозиторий:
+- **Файл:** `src/devices/mpcbstudio.ts` (TypeScript, `DefinitionWithExtend[]`, fingerprint по modelID+manufacturerName)
+- **Форк:** `github.com/remixvit/zigbee-herdsman-converters`, ветка `feat/add-mpcbstudio-devices`
+- **PR:** `https://github.com/Koenkk/zigbee-herdsman-converters/pull/12277`
+
+**Как добавить новое устройство в PR:**
+1. Открыть форк: `https://github.com/remixvit/zigbee-herdsman-converters`
+2. Обновить `src/devices/mpcbstudio.ts` — добавить новый блок в `definitions[]`
+3. `modernExtend` модули: `m.onOff()`, `m.temperature()`, `m.humidity()`, `m.illuminance()` и др.
+4. Создать новый PR или обновить существующий
+
+**Доступные modernExtend модули** (из `zigbee-herdsman-converters/lib/modernExtend`):
+| Функция | Кластер | Применение |
+|---------|---------|-----------|
+| `m.onOff()` | OnOff | реле |
+| `m.temperature()` | Temp Measurement | датчик температуры |
+| `m.humidity()` | Relative Humidity | датчик влажности |
+| `m.illuminance()` | Illuminance Measurement | датчик освещённости |
+| `m.occupancy()` | Occupancy Sensing | датчик движения |
 
 ## Как работать с библиотекой (submodule workflow)
 
