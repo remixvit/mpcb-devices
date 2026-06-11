@@ -1,20 +1,11 @@
 #include "DisplayManager.h"
 
-// ===========================================================================
-// Constructor / Destructor
-// ===========================================================================
-
 DisplayManager::DisplayManager() {}
 DisplayManager::~DisplayManager() {
     delete _lcd;
 }
 
-// ===========================================================================
-// begin() — read NVS pins → configure LovyanGFX → init display
-// ===========================================================================
-
 bool DisplayManager::begin() {
-    // ── Load pin config from NVS ────────────────────────────────────────────
     Preferences prefs;
     prefs.begin("display", true);
     _pinMosi  = prefs.getInt("disp_mosi", 11);
@@ -26,11 +17,10 @@ bool DisplayManager::begin() {
     _pinMiso  = prefs.getInt("disp_miso", -1);
     prefs.end();
 
-    // ── Create LovyanGFX device ─────────────────────────────────────────────
     _lcd = new lgfx::LGFX_Device();
     if (!_lcd) return false;
 
-    // SPI bus config (using member _bus for persistence)
+    // SPI bus
     auto busCfg = _bus.config();
     busCfg.pin_mosi   = _pinMosi;
     busCfg.pin_sclk   = _pinClk;
@@ -39,20 +29,19 @@ bool DisplayManager::begin() {
     busCfg.freq_write = 40000000;
     busCfg.freq_read  = 16000000;
     busCfg.spi_3wire  = (_pinMiso < 0);
+    busCfg.pin_dc = _pinDc;
     _bus.config(busCfg);
+    _panel.setBus(&_bus);
 
-    // ILI9341 panel config (using member _panel for persistence)
+    // ILI9341 panel
     auto panelCfg = _panel.config();
     panelCfg.pin_cs       = _pinCs;
-    panelCfg.pin_dc       = _pinDc;
     panelCfg.pin_rst      = _pinRst;
     panelCfg.pin_busy     = -1;
     panelCfg.memory_width  = 240;
     panelCfg.memory_height = 320;
     panelCfg.panel_width   = 240;
     panelCfg.panel_height  = 320;
-    panelCfg.offset_x     = 0;
-    panelCfg.offset_y     = 0;
     panelCfg.offset_rotation = 0;
     panelCfg.readable     = false;
     panelCfg.invert       = false;
@@ -61,16 +50,15 @@ bool DisplayManager::begin() {
     panelCfg.bus_shared   = false;
     _panel.config(panelCfg);
 
-    _lcd->addBus(_bus, _panel);
+    _lcd->setPanel(&_panel);
     _lcd->begin();
-    _lcd->setRotation(3);   // landscape: 320×240
+    _lcd->setRotation(3);
     _lcd->setColorDepth(16);
 
-    // ── Backlight PWM (LED pin) ─────────────────────────────────────────────
+    // Backlight — ESP32 Arduino v3 API
     if (_pinLed >= 0) {
-        ledcSetup(0, 5000, 8);      // channel 0, 5 kHz, 8-bit
-        ledcAttachPin(_pinLed, 0);
-        ledcWrite(0, 180);           // ~70% default brightness
+        ledcAttach(_pinLed, 5000, 8);
+        ledcWrite(_pinLed, 180);
     }
 
     _ready = true;
@@ -78,26 +66,14 @@ bool DisplayManager::begin() {
     return true;
 }
 
-// ===========================================================================
-// Backlight
-// ===========================================================================
-
 void DisplayManager::setBrightness(uint8_t level) {
-    if (_pinLed >= 0) ledcWrite(0, level);
+    if (_pinLed >= 0) ledcWrite(_pinLed, level);
 }
-
-// ===========================================================================
-// Clear
-// ===========================================================================
 
 void DisplayManager::clear() {
     if (!_lcd) return;
     _lcd->fillScreen(TFT_BLACK);
 }
-
-// ===========================================================================
-// Load / Save helpers
-// ===========================================================================
 
 void DisplayManager::saveAndRender(const String& widgetsJson) {
     _widgetsJson = widgetsJson;
@@ -119,10 +95,6 @@ void DisplayManager::loadAndRender() {
     }
 }
 
-// ===========================================================================
-// render() — parse cached JSON → draw each widget
-// ===========================================================================
-
 void DisplayManager::render() {
     if (!_ready || !_lcd) return;
     _needsRedraw = false;
@@ -141,7 +113,6 @@ void DisplayManager::render() {
     JsonArray widgets = doc.as<JsonArray>();
     if (widgets.size() == 0) return;
 
-    // Clear screen
     _lcd->fillScreen(TFT_BLACK);
 
     for (JsonVariant v : widgets) {
@@ -159,37 +130,25 @@ void DisplayManager::render() {
         uint16_t bg    = _hexToRgb565(w["bgColor"] | "#000000");
 
         if (strcmp(type, "value") == 0) {
-            _drawValue(x, y, ww, hh, label,
-                       w["source"] | "",
-                       w["format"] | "{v}",
-                       fontSize, color, bg);
+            _drawValue(x, y, ww, hh, label, w["source"] | "", w["format"] | "{v}", fontSize, color, bg);
         } else if (strcmp(type, "label") == 0) {
             _drawLabel(x, y, ww, hh, label, fontSize, color, bg);
         } else if (strcmp(type, "button") == 0) {
             _drawButton(x, y, ww, hh, label, fontSize, color, bg);
         } else if (strcmp(type, "gauge") == 0) {
-            _drawGauge(x, y, ww, hh, label,
-                       w["source"] | "",
-                       fontSize, color, bg);
+            _drawGauge(x, y, ww, hh, label, w["source"] | "", fontSize, color, bg);
         }
     }
 }
-
-// ===========================================================================
-// Color helper
-// ===========================================================================
 
 uint16_t DisplayManager::_hexToRgb565(const char* hex) {
     if (!hex || strlen(hex) < 7) return TFT_WHITE;
     uint8_t r = strtol(String(hex).substring(1, 3).c_str(), nullptr, 16);
     uint8_t g = strtol(String(hex).substring(3, 5).c_str(), nullptr, 16);
     uint8_t b = strtol(String(hex).substring(5, 7).c_str(), nullptr, 16);
-    return _lcd ? _lcd->color565(r, g, b) : TFT_WHITE;
+    // color565 is a static-style function in LovyanGFX
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
-
-// ===========================================================================
-// Font size → text scale
-// ===========================================================================
 
 float DisplayManager::_textScale(int fontSize) const {
     if (fontSize <= 8)  return 1.0f;
@@ -199,22 +158,13 @@ float DisplayManager::_textScale(int fontSize) const {
     return 3.0f;
 }
 
-// ===========================================================================
-// Widget renderers
-// ===========================================================================
-
 void DisplayManager::_drawValue(int x, int y, int w, int h,
                                 const String& label, const String& source,
                                 const String& format,
                                 int fontSize, uint16_t color, uint16_t bg) {
     if (!_lcd) return;
+    if (bg != TFT_BLACK) _lcd->fillRect(x, y, w, h, bg);
 
-    // Background
-    if (bg != TFT_BLACK) {
-        _lcd->fillRect(x, y, w, h, bg);
-    }
-
-    // Label row (top portion)
     if (label.length() > 0) {
         _lcd->setTextSize(1.0f);
         _lcd->setTextColor(color, bg);
@@ -222,30 +172,20 @@ void DisplayManager::_drawValue(int x, int y, int w, int h,
         _lcd->print(label);
     }
 
-    // Value row — show source path as placeholder for now
     float scale = _textScale(fontSize);
     _lcd->setTextSize(scale);
     _lcd->setTextColor(color, bg);
     int valY = label.length() > 0 ? y + h / 2 : y + (h - (int)(8 * scale)) / 2;
     _lcd->setCursor(x + 4, valY);
-
-    String display;
-    if (source.length() > 0) {
-        display = format;
-        display.replace("{v}", "...");
-    } else {
-        display = label;
-    }
-    _lcd->println(display);
+    String disp = source.length() > 0 ? String(format).replace("{v}", "...") : label;
+    _lcd->println(disp);
 }
 
 void DisplayManager::_drawLabel(int x, int y, int w, int h,
                                 const String& text,
                                 int fontSize, uint16_t color, uint16_t bg) {
     if (!_lcd) return;
-    if (bg != TFT_BLACK) {
-        _lcd->fillRect(x, y, w, h, bg);
-    }
+    if (bg != TFT_BLACK) _lcd->fillRect(x, y, w, h, bg);
     float scale = _textScale(fontSize);
     _lcd->setTextSize(scale);
     _lcd->setTextColor(color, bg);
@@ -257,11 +197,8 @@ void DisplayManager::_drawButton(int x, int y, int w, int h,
                                  const String& label,
                                  int fontSize, uint16_t color, uint16_t bg) {
     if (!_lcd) return;
-    // Rounded rectangle
     _lcd->fillRoundRect(x, y, w, h, 4, bg);
     _lcd->drawRoundRect(x, y, w, h, 4, color);
-
-    // Centered text
     float scale = _textScale(fontSize);
     _lcd->setTextSize(scale);
     _lcd->setTextColor(color, bg);
@@ -276,11 +213,8 @@ void DisplayManager::_drawGauge(int x, int y, int w, int h,
                                 const String& label, const String& source,
                                 int fontSize, uint16_t color, uint16_t bg) {
     if (!_lcd) return;
-
-    // Background
     _lcd->fillRect(x, y, w, h, bg);
 
-    // Draw a progress bar (50% for demo)
     int barH = h - 4;
     int barY = y + 2;
     if (label.length() > 0) {
@@ -292,14 +226,8 @@ void DisplayManager::_drawGauge(int x, int y, int w, int h,
         barY = y + 14;
     }
 
-    // Background bar
-    uint16_t dark = _lcd->color565(
-        (uint8_t)(((color >> 11) & 0x1F) * 4 * 0.3),
-        (uint8_t)(((color >> 5) & 0x3F) * 2 * 0.3),
-        (uint8_t)((color & 0x1F) * 8 * 0.3));
+    uint16_t dark = (uint16_t)(color >> 2) & 0x39E7;
     _lcd->fillRoundRect(x + 2, barY, w - 4, barH, 2, dark);
-
-    // Filled portion (50% demo)
     int fillW = ((w - 4) * 50) / 100;
     _lcd->fillRoundRect(x + 2, barY, fillW, barH, 2, color);
 }
