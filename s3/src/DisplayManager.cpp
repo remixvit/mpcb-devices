@@ -177,7 +177,9 @@ void DisplayManager::_drawValue(int x, int y, int w, int h,
     _lcd->setTextColor(color, bg);
     int valY = label.length() > 0 ? y + h / 2 : y + (h - (int)(8 * scale)) / 2;
     _lcd->setCursor(x + 4, valY);
-    String disp = source.length() > 0 ? String(format).replace("{v}", "...") : label;
+    String disp;
+    if (source.length() > 0) { disp = format; disp.replace("{v}", "..."); }
+    else { disp = label; }
     _lcd->println(disp);
 }
 
