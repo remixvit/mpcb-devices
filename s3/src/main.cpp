@@ -73,7 +73,7 @@ void setup() {
             char suffix[5];
             snprintf(suffix, sizeof(suffix), "%02X%02X", mac[4], mac[5]);
             dev.deviceId   = "esp32-" + String(suffix);
-            dev.deviceName = DEVICE_NAME;
+            dev.deviceName = MPCB_DEVICE_NAME;
             iot.storage().saveDevice(dev);
         }
         deviceId = dev.deviceId;
