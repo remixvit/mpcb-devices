@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem *)",
+      "Bash(git *)",
+      "PowerShell(git *)",
+      "PowerShell(pio run *)",
+      "PowerShell(Get-Command *)",
+      "Bash(Select-String -Pattern \"startup|i2c-init\")",
+      "PowerShell(platformio run *)",
+      "PowerShell(where.exe platformio 2>&1; where.exe pio 2>&1; python -m platformio --version 2>&1)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(& \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run -e c6-wifi)",
+      "PowerShell(& \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run -e c3)",
+      "PowerShell(& \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run -e c6-wifi --target upload --upload-port COM10)",
+      "PowerShell(Start-Sleep -Seconds 15; Invoke-RestMethod -Uri \"http://192.168.1.41/api/log-text\" -TimeoutSec 10)",
+      "PowerShell(Invoke-RestMethod -Uri \"http://192.168.1.41/api/state\" -TimeoutSec 10)",
+      "Bash(curl -s http://192.168.1.41/api/log-text)"
+    ]
+  }
+}

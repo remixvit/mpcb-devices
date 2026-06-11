@@ -7,6 +7,10 @@
 #include <WebServer.h>
 #include <Update.h>
 
+#ifndef MPCB_DEVICE_NAME
+#define MPCB_DEVICE_NAME "T4 Scale"
+#endif
+
 // ─── Pins ────────────────────────────────────────────────────────────────────
 #define BTN_UP   39
 #define BTN_SET  37

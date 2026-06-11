@@ -1,6 +1,10 @@
 #include <Arduino.h>
 #include <MpcbIotCore.h>
 
+#ifndef MPCB_DEVICE_NAME
+#define MPCB_DEVICE_NAME "ESP32-C3"
+#endif
+
 // ─── System LED (GPIO8 — onboard blue LED, active HIGH) ──────────────────
 #define LED_PIN 8
 #define LED_ON  HIGH

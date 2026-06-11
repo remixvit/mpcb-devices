@@ -3,6 +3,10 @@
 #include <MpcbIotCore.h>
 #include "DisplayManager.h"
 
+#ifndef MPCB_DEVICE_NAME
+#define MPCB_DEVICE_NAME "ESP32-S3"
+#endif
+
 // ─── Board identity (→ device.state._board on API) ────────────────────────────
 // Published as retained config message on MQTT connect.
 #define MPCB_BOARD_ID "s3-zero"

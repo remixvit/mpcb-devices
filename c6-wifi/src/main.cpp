@@ -2,6 +2,10 @@
 #include <neopixel/WS2812Strip.h>
 #include <MpcbIotCore.h>
 
+#ifndef MPCB_DEVICE_NAME
+#define MPCB_DEVICE_NAME "ESP32-C6"
+#endif
+
 // ─── System LED (GPIO8 — встроенный WS2812, статус устройства) ──────────────
 #define STATUS_PIN 8
 WS2812Strip statusLed;
