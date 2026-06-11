@@ -476,7 +476,7 @@ void setup() {
         if(dev.deviceId.isEmpty()){
             uint8_t mac[6]; WiFi.macAddress(mac);
             char s[5]; snprintf(s,sizeof(s),"%02X%02X",mac[4],mac[5]);
-            dev.deviceId="esp32-"+String(s); dev.deviceName="T4 Scale";
+            dev.deviceId="esp32-"+String(s); dev.deviceName=DEVICE_NAME;
             iot.storage().saveDevice(dev);
         }
         deviceId = dev.deviceId;
