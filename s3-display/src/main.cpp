@@ -11,13 +11,13 @@
 // Published as retained config message on MQTT connect.
 #define MPCB_BOARD_ID "s3-display"
 
-// ─── Status LED (GPIO48 — built-in WS2812 on S3-Zero) ────────────────────────
-#define STATUS_PIN 48
-WS2812Strip statusLed;
+// ─── Status LED (GPIO21 — built-in WS2812 on S3-Zero) ────────────────────────
+#define LED_PIN 21
+WS2812Strip led;
 
-void setColor(uint8_t r, uint8_t g, uint8_t b) {
-    statusLed.fill(r, g, b, 50);
-    statusLed.show();
+void ledSet(uint8_t r, uint8_t g, uint8_t b, uint8_t brightness = 50) {
+    led.fill(r, g, b, brightness);
+    led.show();
 }
 
 // ─── Core ────────────────────────────────────────────────────────────────────
@@ -25,6 +25,7 @@ MpcbIotCore    iot;
 PeriphManager  pm;
 DisplayManager display;
 String         deviceId;
+IotState       currentIotState = IotState::BOOTING;
 
 // ─── MQTT Task (Core 0) — WiFi + MQTT + sensor polling ──────────────────────
 void mqttTask(void* pv) {
@@ -35,14 +36,33 @@ void mqttTask(void* pv) {
     }
 }
 
-// ─── Heartbeat (dim green pulse when idle) ───────────────────────────────────
-void heartbeat() {
-    if (iot.state() != IotState::RUNNING) return;
-    static uint32_t lastBeat = 0;
-    static bool     beatOn   = false;
+// ─── LED state indication (Core 1 only — called from loop) ──────────────────
+void updateLed() {
+    static uint32_t lastBlink = 0;
+    static bool     blinkOn   = false;
     uint32_t now = millis();
-    if (!beatOn && now - lastBeat >= 3000) { setColor(0, 8, 0); beatOn = true;  lastBeat = now; }
-    else if (beatOn && now - lastBeat >= 80) { setColor(0, 0, 0); beatOn = false; }
+
+    switch (currentIotState) {
+        case IotState::BOOTING:
+            ledSet(10, 10, 10);  // white dim
+            break;
+        case IotState::CONNECTING:
+            if (now - lastBlink >= 500) {
+                lastBlink = now;
+                blinkOn   = !blinkOn;
+                ledSet(blinkOn ? 30 : 0, blinkOn ? 15 : 0, 0);  // yellow blink
+            }
+            break;
+        case IotState::AP_PORTAL:
+            ledSet(0, 0, 30);  // blue
+            break;
+        case IotState::CONFIG_SERVER:
+            ledSet(0, 20, 20);  // cyan
+            break;
+        case IotState::RUNNING:
+            ledSet(0, 20, 0);  // green
+            break;
+    }
 }
 
 // ─── Display loop (render when dirty) ────────────────────────────────────────
@@ -60,8 +80,8 @@ void setup() {
     Serial.begin(115200);
     delay(200);
 
-    statusLed.begin(STATUS_PIN, 1);
-    setColor(0, 0, 30);  // blue — booting
+    led.begin(LED_PIN, 1);
+    ledSet(10, 10, 10);  // white dim — booting
 
     // ── NVS + MQTT defaults ────────────────────────────────────────────────
     iot.storage().begin();
@@ -97,22 +117,12 @@ void setup() {
         devName  = dev.deviceName;
     }
 
-    // ── FSM indication ─────────────────────────────────────────────────────
+    // ── FSM indication (Core 0 callback — only update variable, LED is Core 1) ──
     iot.onStateChange([](IotState s) {
-        switch (s) {
-            case IotState::AP_PORTAL:     setColor(30, 15,  0); break; // yellow
-            case IotState::CONNECTING:    setColor( 0,  0, 30); break; // blue
-            case IotState::CONFIG_SERVER: setColor( 0, 15, 30); break; // cyan
-            case IotState::RUNNING: {
-                for (int i = 0; i < 2; i++) {
-                    setColor(0, 60, 0); delay(150);
-                    setColor(0,  0, 0); delay(100);
-                }
-                // Load and render saved display widgets on startup
-                display.loadAndRender();
-                break;
-            }
-            default: break;
+        currentIotState = s;
+        if (s == IotState::RUNNING) {
+            // Load and render saved display widgets on startup
+            display.loadAndRender();
         }
     });
 
@@ -160,9 +170,9 @@ void setup() {
     Log.log("App", "Device ready: " + deviceId + " board=" MPCB_BOARD_ID);
 }
 
-// ─── Loop (Core 1) — display only ────────────────────────────────────────────
+// ─── Loop (Core 1) — LED + display ────────────────────────────────────────────
 void loop() {
-    heartbeat();
+    updateLed();
     displayLoop();
     delay(10);
 }
