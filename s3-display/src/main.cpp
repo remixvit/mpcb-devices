@@ -25,24 +25,14 @@ MpcbIotCore    iot;
 PeriphManager  pm;
 DisplayManager display;
 String         deviceId;
-IotState       currentIotState = IotState::BOOTING;
 
-// ─── MQTT Task (Core 0) — WiFi + MQTT + sensor polling ──────────────────────
-void mqttTask(void* pv) {
-    for (;;) {
-        iot.loop();
-        pm.loop();
-        vTaskDelay(1);
-    }
-}
-
-// ─── LED state indication (Core 1 only — called from loop) ──────────────────
+// ─── LED state indication ───────────────────────────────────────────────────
 void updateLed() {
     static uint32_t lastBlink = 0;
     static bool     blinkOn   = false;
     uint32_t now = millis();
 
-    switch (currentIotState) {
+    switch (iot.state()) {
         case IotState::BOOTING:
             ledSet(10, 10, 10);  // white dim
             break;
@@ -117,12 +107,22 @@ void setup() {
         devName  = dev.deviceName;
     }
 
-    // ── FSM indication (Core 0 callback — only update variable, LED is Core 1) ──
+    // ── FSM indication ─────────────────────────────────────────────────────
     iot.onStateChange([](IotState s) {
-        currentIotState = s;
-        if (s == IotState::RUNNING) {
-            // Load and render saved display widgets on startup
-            display.loadAndRender();
+        switch (s) {
+            case IotState::AP_PORTAL:     ledSet(30, 15,  0); break; // yellow
+            case IotState::CONNECTING:    ledSet( 0,  0, 30); break; // blue
+            case IotState::CONFIG_SERVER: ledSet( 0, 15, 30); break; // cyan
+            case IotState::RUNNING: {
+                for (int i = 0; i < 2; i++) {
+                    ledSet(0, 60, 0); delay(150);
+                    ledSet(0,  0, 0); delay(100);
+                }
+                // Load and render saved display widgets on startup
+                display.loadAndRender();
+                break;
+            }
+            default: break;
         }
     });
 
@@ -164,15 +164,13 @@ void setup() {
     display.begin();
     display.loadAndRender();
 
-    // ── Start MQTT task on Core 0 ──────────────────────────────────────────
-    xTaskCreatePinnedToCore(mqttTask, "mqtt", 8192, NULL, 1, NULL, 0);
-
     Log.log("App", "Device ready: " + deviceId + " board=" MPCB_BOARD_ID);
 }
 
-// ─── Loop (Core 1) — LED + display ────────────────────────────────────────────
+// ─── Loop ────────────────────────────────────────────────────────────────────
 void loop() {
+    iot.loop();
+    pm.loop();
     updateLed();
     displayLoop();
-    delay(10);
 }
