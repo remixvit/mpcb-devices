@@ -57,12 +57,16 @@ void setup() {
     String devName;
     {
         DeviceConfig dev = iot.storage().loadDevice();
+        // Migrate old format: "esp32-XXXX" → "esp32-c6mini-XXXX"
+        if (!dev.deviceId.isEmpty() && dev.deviceId.indexOf("c6mini") < 0) {
+            dev.deviceId.clear();
+        }
         if (dev.deviceId.isEmpty()) {
             uint8_t mac[6];
             WiFi.macAddress(mac);
             char suffix[5];
             snprintf(suffix, sizeof(suffix), "%02X%02X", mac[4], mac[5]);
-            dev.deviceId   = "esp32-" + String(suffix);
+            dev.deviceId   = "esp32-c6mini-" + String(suffix);
             dev.deviceName = MPCB_DEVICE_NAME;
             iot.storage().saveDevice(dev);
         }

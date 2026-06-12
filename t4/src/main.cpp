@@ -477,10 +477,14 @@ void setup() {
     WiFi.mode(WIFI_STA);
     {
         DeviceConfig dev = iot.storage().loadDevice();
+        // Migrate old format: "esp32-XXXX" → "esp32-t4-XXXX"
+        if(!dev.deviceId.isEmpty() && dev.deviceId.indexOf("t4") < 0){
+            dev.deviceId.clear();
+        }
         if(dev.deviceId.isEmpty()){
             uint8_t mac[6]; WiFi.macAddress(mac);
             char s[5]; snprintf(s,sizeof(s),"%02X%02X",mac[4],mac[5]);
-            dev.deviceId="esp32-"+String(s); dev.deviceName=MPCB_DEVICE_NAME;
+            dev.deviceId="esp32-t4-"+String(s); dev.deviceName=MPCB_DEVICE_NAME;
             iot.storage().saveDevice(dev);
         }
         deviceId = dev.deviceId;
