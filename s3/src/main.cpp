@@ -143,6 +143,7 @@ void setup() {
         pm.onMqttConnected();
         String boardTopic = "mpcb/devices/" + deviceId + "/config/board";
         iot.publish(boardTopic, MPCB_BOARD_ID, true);
+        iot.subscribe("mpcb/devices/" + deviceId + "/configure/set");
 #ifdef MPCB_USE_DISPLAY
         iot.subscribe("mpcb/devices/" + deviceId + "/display/set");
 #endif
