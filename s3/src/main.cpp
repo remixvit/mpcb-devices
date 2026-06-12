@@ -173,7 +173,9 @@ void setup() {
     // ── Display init + Core 0 task ──────────────────────────────────────────
     display.begin();
     display.loadAndRender();
-    xTaskCreatePinnedToCore(displayTask, "display", 8192, NULL, 1, NULL, 0);
+    // Core 1, priority 0 (below Arduino loop priority 1) — display shares core
+    // with WiFi/MQTT but at lower priority, no DMA conflict with WiFi on Core 0
+    xTaskCreatePinnedToCore(displayTask, "display", 8192, NULL, 0, NULL, 1);
 #endif
 
     Log.log("App", "Device ready: " + deviceId + " board=" MPCB_BOARD_ID);
