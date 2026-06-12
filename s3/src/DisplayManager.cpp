@@ -29,8 +29,9 @@ bool DisplayManager::begin() {
     busCfg.spi_mode   = 0;
     busCfg.freq_write = 40000000;
     busCfg.freq_read  = 16000000;
-    busCfg.spi_3wire  = (_pinMiso < 0);
-    busCfg.pin_dc     = _pinDc;
+    busCfg.spi_3wire   = (_pinMiso < 0);
+    busCfg.pin_dc      = _pinDc;
+    busCfg.dma_channel = 0;  // polling SPI — avoids GDMA conflict with WiFi on Core 0
     _bus.config(busCfg);
     _panel.setBus(&_bus);
 
