@@ -18,6 +18,8 @@ bool DisplayManager::begin() {
     _pinMiso  = prefs.getInt("disp_miso", -1);
     prefs.end();
 
+    Serial.printf("[display] pins: mosi=%d clk=%d cs=%d dc=%d rst=%d led=%d miso=%d\n",
+                  _pinMosi, _pinClk, _pinCs, _pinDc, _pinRst, _pinLed, _pinMiso);
     if (_pinMosi < 0 || _pinClk < 0 || _pinCs < 0 || _pinDc < 0) {
         Serial.println("[display] pins not configured — skipping init");
         return false;

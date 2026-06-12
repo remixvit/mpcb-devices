@@ -214,8 +214,12 @@ void setup() {
 
 #ifdef MPCB_USE_DISPLAY
     // ── Display init + Core 0 task ──────────────────────────────────────────
-    display.begin();
-    display.loadAndRender();
+    if (display.begin()) {
+        Serial.println("[display] init OK");
+        display.loadAndRender();
+    } else {
+        Serial.println("[display] init FAILED — check NVS pins");
+    }
     // Core 0 — display uses polling SPI (no DMA), no conflict with WiFi GDMA
     xTaskCreatePinnedToCore(displayTask, "display", 8192, NULL, 1, NULL, 0);
 #endif
