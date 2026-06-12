@@ -65,6 +65,15 @@ void displayLoop() {
     display.render();
 }
 
+// ─── Display Task (Core 0) — rendering only, no WiFi/MQTT ───────────────────
+void displayTask(void* pv) {
+    for (;;) {
+        updateLed();
+        displayLoop();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
 // ─── Setup ───────────────────────────────────────────────────────────────────
 void setup() {
     Serial.begin(115200);
@@ -164,13 +173,15 @@ void setup() {
     display.begin();
     display.loadAndRender();
 
+    // ── Display task on Core 0 (WiFi stack also on Core 0, but display
+    //    doesn't touch sockets — ESP-IDF SPI driver is re-entrant) ───────────
+    xTaskCreatePinnedToCore(displayTask, "display", 8192, NULL, 1, NULL, 0);
+
     Log.log("App", "Device ready: " + deviceId + " board=" MPCB_BOARD_ID);
 }
 
-// ─── Loop ────────────────────────────────────────────────────────────────────
+// ─── Loop (Core 1) — WiFi + MQTT + peripherals ───────────────────────────────
 void loop() {
     iot.loop();
     pm.loop();
-    updateLed();
-    displayLoop();
 }
