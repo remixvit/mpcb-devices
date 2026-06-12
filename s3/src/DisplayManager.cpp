@@ -1,4 +1,5 @@
 #include "DisplayManager.h"
+#ifdef MPCB_USE_DISPLAY
 
 DisplayManager::DisplayManager() {}
 DisplayManager::~DisplayManager() {
@@ -233,3 +234,5 @@ void DisplayManager::_drawGauge(int x, int y, int w, int h,
     int fillW = ((w - 4) * 50) / 100;
     _lcd->fillRoundRect(x + 2, barY, fillW, barH, 2, color);
 }
+
+#endif // MPCB_USE_DISPLAY

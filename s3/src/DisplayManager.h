@@ -1,4 +1,5 @@
 #pragma once
+#ifdef MPCB_USE_DISPLAY
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <LovyanGFX.hpp>
@@ -72,3 +73,4 @@ private:
     bool _needsRedraw           = false;
     String _widgetsJson;        // cached JSON string
 };
+#endif // MPCB_USE_DISPLAY
