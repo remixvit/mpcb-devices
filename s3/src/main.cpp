@@ -46,6 +46,7 @@ void displayLoop() {
         lastForced = millis();
         display.render();
     }
+    display.pollTouch();
 }
 
 // ─── Display Task (Core 0) — rendering only, no WiFi/MQTT ───────────────────
@@ -253,4 +254,13 @@ void loop() {
     iot.loop();
     pm.loop();
     updateLed();
+#ifdef MPCB_USE_DISPLAY
+    {
+        TouchCmd cmd;
+        if (display.getTouchCmd(cmd)) {
+            iot.publish(String(cmd.topic), String(cmd.payload));
+            Serial.printf("[touch] published: %s → %s\n", cmd.topic, cmd.payload);
+        }
+    }
+#endif
 }

@@ -15,7 +15,9 @@ bool DisplayManager::begin() {
     _pinDc    = prefs.getInt("disp_dc",   -1);
     _pinRst   = prefs.getInt("disp_rst",  -1);
     _pinLed   = prefs.getInt("disp_led",  -1);
-    _pinMiso  = prefs.getInt("disp_miso", -1);
+    _pinMiso     = prefs.getInt("disp_miso", -1);
+    _pinTouchCs  = prefs.getInt("disp_t_cs",  -1);
+    _pinTouchIrq = prefs.getInt("disp_t_irq", -1);
     prefs.end();
 
     Serial.printf("[display] pins: mosi=%d clk=%d cs=%d dc=%d rst=%d led=%d miso=%d\n",
@@ -59,6 +61,28 @@ bool DisplayManager::begin() {
     _panel.config(panelCfg);
 
     _lcd->setPanel(&_panel);
+
+    // XPT2046 touch
+    if (_pinTouchCs >= 0) {
+        static lgfx::Touch_XPT2046 touch;
+        auto touchCfg = touch.config();
+        touchCfg.x_min      = 300;
+        touchCfg.x_max      = 3800;
+        touchCfg.y_min      = 300;
+        touchCfg.y_max      = 3800;
+        touchCfg.pin_int    = _pinTouchIrq;
+        touchCfg.bus_shared = true;
+        touchCfg.offset_rotation = 0;
+        touchCfg.spi_host   = SPI3_HOST;
+        touchCfg.freq       = 1000000;
+        touchCfg.pin_sclk   = _pinClk;
+        touchCfg.pin_mosi   = _pinMosi;
+        touchCfg.pin_miso   = _pinMiso;
+        touchCfg.pin_cs     = _pinTouchCs;
+        touch.config(touchCfg);
+        _panel.setTouch(&touch);
+    }
+
     _lcd->begin();
     _lcd->setRotation(3);
     _lcd->setColorDepth(16);
@@ -71,6 +95,8 @@ bool DisplayManager::begin() {
 
     _ready = true;
     _stateMutex = xSemaphoreCreateMutex();
+    _touchQueue = xQueueCreate(4, sizeof(TouchCmd));
+    if (_pinTouchCs >= 0) _initTouch();
     clear();
     return true;
 }
@@ -107,6 +133,7 @@ void DisplayManager::loadAndRender() {
 void DisplayManager::render() {
     if (!_ready || !_lcd) return;
     _needsRedraw = false;
+    _buttons.clear();
 
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, _widgetsJson);
@@ -144,6 +171,20 @@ void DisplayManager::render() {
             _drawLabel(x, y, ww, hh, label, fontSize, color, bg);
         } else if (strcmp(type, "button") == 0) {
             _drawButton(x, y, ww, hh, label, fontSize, color, bg);
+            // Save hit area for touch polling
+            ButtonHit hit;
+            hit.x = x; hit.y = y; hit.w = ww; hit.h = hh;
+            String topic = w["topic"] | "";
+            JsonVariant payloadVar = w["payload"];
+            String payloadStr;
+            if (payloadVar.is<JsonObject>()) {
+                serializeJson(payloadVar, payloadStr);
+            } else {
+                payloadStr = w["payload"] | "{}";
+            }
+            topic.toCharArray(hit.topic, sizeof(hit.topic));
+            payloadStr.toCharArray(hit.payload, sizeof(hit.payload));
+            _buttons.push_back(hit);
         } else if (strcmp(type, "gauge") == 0) {
             float minV = w["min"] | 0.0f;
             float maxV = w["max"] | 100.0f;
@@ -278,6 +319,53 @@ String DisplayManager::getStateValue(const String& dotKey) const {
     String result = (it != _stateCache.end()) ? it->second : "";
     xSemaphoreGive(_stateMutex);
     return result;
+}
+
+// ─── Touch (XPT2046) ──────────────────────────────────────────────────────────
+
+void DisplayManager::_initTouch() {
+    Serial.printf("[touch] XPT2046 init: cs=%d irq=%d\n", _pinTouchCs, _pinTouchIrq);
+}
+
+void DisplayManager::pollTouch() {
+    if (!_ready || !_lcd || !_touchQueue) return;
+    if (_buttons.empty()) return;
+
+    uint16_t tx, ty;
+    if (!_lcd->getTouch(&tx, &ty)) return;
+
+    uint32_t now = millis();
+    if (now - _lastTapMs < 300) return;  // debounce
+    _lastTapMs = now;
+
+    for (const auto& btn : _buttons) {
+        if (tx >= (uint16_t)btn.x && tx <= (uint16_t)(btn.x + btn.w) &&
+            ty >= (uint16_t)btn.y && ty <= (uint16_t)(btn.y + btn.h)) {
+            // Visual feedback
+            _lcd->fillRoundRect(btn.x, btn.y, btn.w, btn.h, 4, TFT_WHITE);
+            vTaskDelay(pdMS_TO_TICKS(150));
+            render();  // restore normal appearance
+
+            // Send to queue
+            TouchCmd cmd;
+            strncpy(cmd.topic,   btn.topic,   sizeof(cmd.topic)   - 1);
+            strncpy(cmd.payload, btn.payload, sizeof(cmd.payload) - 1);
+            cmd.topic[sizeof(cmd.topic) - 1]   = '\0';
+            cmd.payload[sizeof(cmd.payload) - 1] = '\0';
+
+            if (xQueueSend(_touchQueue, &cmd, 0) != pdTRUE) {
+                Serial.println("[touch] queue full — tap dropped");
+            } else {
+                Serial.printf("[touch] tap → topic=%s\n", cmd.topic);
+            }
+            break;
+        }
+    }
+}
+
+bool DisplayManager::getTouchCmd(TouchCmd& cmd) {
+    if (!_touchQueue) return false;
+    return xQueueReceive(_touchQueue, &cmd, 0) == pdTRUE;
 }
 
 #endif // MPCB_USE_DISPLAY

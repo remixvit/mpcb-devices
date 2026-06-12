@@ -7,6 +7,8 @@
 #include <map>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <freertos/queue.h>
+#include <vector>
 
 // ─── ESP32-S3-Zero ILI9341 Display Manager ────────────────────────────────────
 //
@@ -19,6 +21,11 @@
 //
 // Supported widget types: value, label, button, gauge
 // ───────────────────────────────────────────────────────────────────────────────
+
+struct TouchCmd {
+    char topic[128];
+    char payload[256];
+};
 
 class DisplayManager {
 public:
@@ -46,6 +53,10 @@ public:
 
     bool isReady() const { return _ready; }
     bool needsRedraw() const { return _needsRedraw; }
+
+    // Touch (XPT2046) — poll on Core 0, read queue on Core 1
+    void pollTouch();
+    bool getTouchCmd(TouchCmd& cmd);
 
     // Thread-safe state cache for value/gauge widgets
     void updateStateValue(const String& dotKey, const String& value);
@@ -78,6 +89,8 @@ private:
     int  _pinRst                = -1;
     int  _pinLed                = -1;
     int  _pinMiso               = -1;
+    int  _pinTouchCs            = -1;
+    int  _pinTouchIrq           = -1;
     bool _ready                 = false;
     bool _needsRedraw           = false;
     String _widgetsJson;        // cached JSON string
@@ -85,5 +98,14 @@ private:
     // Thread-safe state cache for value/gauge widget data
     mutable SemaphoreHandle_t _stateMutex = nullptr;
     std::map<String, String>  _stateCache;
+
+    // Touch (XPT2046) button hit tracking
+    QueueHandle_t _touchQueue = nullptr;
+    uint32_t _lastTapMs = 0;
+
+    struct ButtonHit { int x, y, w, h; char topic[128]; char payload[256]; };
+    std::vector<ButtonHit> _buttons;
+
+    void _initTouch();
 };
 #endif // MPCB_USE_DISPLAY
