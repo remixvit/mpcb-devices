@@ -158,8 +158,12 @@ void setup() {
         }
 #endif
         if (topic.endsWith("/configure/set")) {
-            StaticJsonDocument<8192> doc;
-            if (deserializeJson(doc, payload) != DeserializationError::Ok) return;
+            JsonDocument doc;
+            DeserializationError err = deserializeJson(doc, payload);
+            if (err != DeserializationError::Ok) {
+                Serial.println("[display] JSON parse error: " + String(err.c_str()));
+                return;
+            }
             JsonObject canvas = doc["canvas"];
             if (canvas.isNull()) return;
             JsonArray nodes = canvas["nodes"];
