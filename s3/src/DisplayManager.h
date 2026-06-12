@@ -4,6 +4,9 @@
 #include <ArduinoJson.h>
 #include <LovyanGFX.hpp>
 #include <Preferences.h>
+#include <map>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 // ─── ESP32-S3-Zero ILI9341 Display Manager ────────────────────────────────────
 //
@@ -42,6 +45,12 @@ public:
     void clear();
 
     bool isReady() const { return _ready; }
+    bool needsRedraw() const { return _needsRedraw; }
+
+    // Thread-safe state cache for value/gauge widgets
+    void updateStateValue(const String& dotKey, const String& value);
+    void clearState();
+    String getStateValue(const String& dotKey) const;
 
 private:
     static uint16_t _hexToRgb565(const char* hex);
@@ -53,7 +62,7 @@ private:
     void _drawButton(int x, int y, int w, int h, const String& label,
                      int fontSize, uint16_t color, uint16_t bg);
     void _drawGauge(int x, int y, int w, int h, const String& label,
-                    const String& source,
+                    const String& source, float minV, float maxV,
                     int fontSize, uint16_t color, uint16_t bg);
     float _textScale(int fontSize) const;
 
@@ -72,5 +81,9 @@ private:
     bool _ready                 = false;
     bool _needsRedraw           = false;
     String _widgetsJson;        // cached JSON string
+
+    // Thread-safe state cache for value/gauge widget data
+    mutable SemaphoreHandle_t _stateMutex = nullptr;
+    std::map<String, String>  _stateCache;
 };
 #endif // MPCB_USE_DISPLAY

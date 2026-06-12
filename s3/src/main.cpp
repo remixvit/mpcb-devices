@@ -30,12 +30,22 @@ String        deviceId;
 #ifdef MPCB_USE_DISPLAY
 DisplayManager display;
 
-// ─── Display loop (render when dirty) ────────────────────────────────────────
+// ─── Extract peripheral key from state topic ────────────────────────────────
+// "mpcb/devices/{id}/{key}/state" → "{key}"
+static String extractPeriphKey(const String& topic) {
+    int last = topic.lastIndexOf('/');
+    int prev = topic.lastIndexOf('/', last - 1);
+    return topic.substring(prev + 1, last);
+}
+
+// ─── Display loop (render when dirty or forced every 5s) ────────────────────
 void displayLoop() {
-    static uint32_t lastRedraw = 0;
-    if (millis() - lastRedraw < 500) return;
-    lastRedraw = millis();
-    display.render();
+    if (!display.isReady()) return;
+    static uint32_t lastForced = 0;
+    if (display.needsRedraw() || (millis() - lastForced > 5000)) {
+        lastForced = millis();
+        display.render();
+    }
 }
 
 // ─── Display Task (Core 0) — rendering only, no WiFi/MQTT ───────────────────
@@ -146,6 +156,7 @@ void setup() {
         iot.subscribe("mpcb/devices/" + deviceId + "/configure/set");
 #ifdef MPCB_USE_DISPLAY
         iot.subscribe("mpcb/devices/" + deviceId + "/display/set");
+        iot.subscribe("mpcb/devices/" + deviceId + "/+/state");
 #endif
     });
 
@@ -153,6 +164,16 @@ void setup() {
     iot.onMqttMessage([](const String& topic, const String& payload) {
         if (pm.handleMessage(topic, payload)) return;
 #ifdef MPCB_USE_DISPLAY
+        if (topic.endsWith("/state") && !topic.endsWith("/display/state")) {
+            String key = extractPeriphKey(topic);
+            JsonDocument stateDoc;
+            if (deserializeJson(stateDoc, payload) == DeserializationError::Ok) {
+                for (JsonPair kv : stateDoc.as<JsonObject>()) {
+                    display.updateStateValue(key + "." + kv.key().c_str(),
+                                             kv.value().as<String>());
+                }
+            }
+        }
         if (topic.endsWith("/display/set")) {
             display.saveAndRender(payload);
         }

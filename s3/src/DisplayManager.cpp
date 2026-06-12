@@ -70,6 +70,7 @@ bool DisplayManager::begin() {
     }
 
     _ready = true;
+    _stateMutex = xSemaphoreCreateMutex();
     clear();
     return true;
 }
@@ -144,7 +145,9 @@ void DisplayManager::render() {
         } else if (strcmp(type, "button") == 0) {
             _drawButton(x, y, ww, hh, label, fontSize, color, bg);
         } else if (strcmp(type, "gauge") == 0) {
-            _drawGauge(x, y, ww, hh, label, w["source"] | "", fontSize, color, bg);
+            float minV = w["min"] | 0.0f;
+            float maxV = w["max"] | 100.0f;
+            _drawGauge(x, y, ww, hh, label, w["source"] | "", minV, maxV, fontSize, color, bg);
         }
     }
 }
@@ -186,7 +189,11 @@ void DisplayManager::_drawValue(int x, int y, int w, int h,
     int valY = label.length() > 0 ? y + h / 2 : y + (h - (int)(8 * scale)) / 2;
     _lcd->setCursor(x + 4, valY);
     String disp;
-    if (source.length() > 0) { disp = format; disp.replace("{v}", "..."); }
+    if (source.length() > 0) {
+        String val = getStateValue(source);
+        disp = format;
+        disp.replace("{v}", val.length() > 0 ? val : "—");
+    }
     else { disp = label; }
     _lcd->println(disp);
 }
@@ -221,6 +228,7 @@ void DisplayManager::_drawButton(int x, int y, int w, int h,
 
 void DisplayManager::_drawGauge(int x, int y, int w, int h,
                                 const String& label, const String& source,
+                                float minV, float maxV,
                                 int fontSize, uint16_t color, uint16_t bg) {
     if (!_lcd) return;
     _lcd->fillRect(x, y, w, h, bg);
@@ -236,10 +244,40 @@ void DisplayManager::_drawGauge(int x, int y, int w, int h,
         barY = y + 14;
     }
 
+    float val = getStateValue(source).toFloat();
+    float pct = (maxV > minV) ? constrain((val - minV) / (maxV - minV), 0.0f, 1.0f) : 0.0f;
+    int fillW = (int)((w - 4) * pct);
+
     uint16_t dark = (uint16_t)(color >> 2) & 0x39E7;
     _lcd->fillRoundRect(x + 2, barY, w - 4, barH, 2, dark);
-    int fillW = ((w - 4) * 50) / 100;
     _lcd->fillRoundRect(x + 2, barY, fillW, barH, 2, color);
+}
+
+// ─── Thread-safe state cache ──────────────────────────────────────────────────
+
+void DisplayManager::updateStateValue(const String& dotKey, const String& value) {
+    if (!_stateMutex) return;
+    xSemaphoreTake(_stateMutex, portMAX_DELAY);
+    _stateCache[dotKey] = value;
+    xSemaphoreGive(_stateMutex);
+    _needsRedraw = true;
+    Serial.printf("[display] state update: key=%s val=%s\n", dotKey.c_str(), value.c_str());
+}
+
+void DisplayManager::clearState() {
+    if (!_stateMutex) return;
+    xSemaphoreTake(_stateMutex, portMAX_DELAY);
+    _stateCache.clear();
+    xSemaphoreGive(_stateMutex);
+}
+
+String DisplayManager::getStateValue(const String& dotKey) const {
+    if (!_stateMutex) return "";
+    xSemaphoreTake(_stateMutex, portMAX_DELAY);
+    auto it = _stateCache.find(dotKey);
+    String result = (it != _stateCache.end()) ? it->second : "";
+    xSemaphoreGive(_stateMutex);
+    return result;
 }
 
 #endif // MPCB_USE_DISPLAY
