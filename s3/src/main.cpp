@@ -156,6 +156,44 @@ void setup() {
             display.saveAndRender(payload);
         }
 #endif
+        if (topic.endsWith("/configure/set")) {
+            StaticJsonDocument<8192> doc;
+            if (deserializeJson(doc, payload) != DeserializationError::Ok) return;
+            JsonObject canvas = doc["canvas"];
+            if (canvas.isNull()) return;
+            JsonArray nodes = canvas["nodes"];
+            if (nodes.isNull()) return;
+            for (JsonObject node : nodes) {
+                const char* ptype = node["peripheralType"];
+                if (!ptype) continue;
+                if (strcmp(ptype, "ili9341") != 0 && strcmp(ptype, "ili9341_touch") != 0) continue;
+                // Found display node — extract pin connections
+                // handle → NVS key mapping
+                JsonArray conns = node["connections"];
+                if (conns.isNull()) continue;
+                Preferences prefs;
+                prefs.begin("display", false);
+                for (JsonObject conn : conns) {
+                    const char* handle = conn["handle"];
+                    int pin = conn["pin"] | -1;
+                    if (!handle || pin < 0) continue;
+                    if      (strcmp(handle, "mosi")  == 0) prefs.putInt("disp_mosi",  pin);
+                    else if (strcmp(handle, "clk")   == 0) prefs.putInt("disp_clk",   pin);
+                    else if (strcmp(handle, "cs")    == 0) prefs.putInt("disp_cs",    pin);
+                    else if (strcmp(handle, "dc")    == 0) prefs.putInt("disp_dc",    pin);
+                    else if (strcmp(handle, "rst")   == 0) prefs.putInt("disp_rst",   pin);
+                    else if (strcmp(handle, "led")   == 0) prefs.putInt("disp_led",   pin);
+                    else if (strcmp(handle, "miso")  == 0) prefs.putInt("disp_miso",  pin);
+                    else if (strcmp(handle, "t_cs")  == 0) prefs.putInt("disp_t_cs",  pin);
+                    else if (strcmp(handle, "t_irq") == 0) prefs.putInt("disp_t_irq", pin);
+                }
+                prefs.end();
+                Serial.println("[display] pins saved from canvas, rebooting...");
+                delay(200);
+                ESP.restart();
+                return;
+            }
+        }
     });
 
     // ── Dashboard ──────────────────────────────────────────────────────────

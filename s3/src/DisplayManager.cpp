@@ -9,15 +9,19 @@ DisplayManager::~DisplayManager() {
 bool DisplayManager::begin() {
     Preferences prefs;
     prefs.begin("display", true);
-    _pinMosi  = prefs.getInt("disp_mosi", 11);
-    _pinClk   = prefs.getInt("disp_clk",  12);
-    _pinCs    = prefs.getInt("disp_cs",   10);
-    _pinDc    = prefs.getInt("disp_dc",   9);
-    _pinRst   = prefs.getInt("disp_rst",  8);
-    _pinLed   = prefs.getInt("disp_led",  7);
+    _pinMosi  = prefs.getInt("disp_mosi", -1);
+    _pinClk   = prefs.getInt("disp_clk",  -1);
+    _pinCs    = prefs.getInt("disp_cs",   -1);
+    _pinDc    = prefs.getInt("disp_dc",   -1);
+    _pinRst   = prefs.getInt("disp_rst",  -1);
+    _pinLed   = prefs.getInt("disp_led",  -1);
     _pinMiso  = prefs.getInt("disp_miso", -1);
     prefs.end();
 
+    if (_pinMosi < 0 || _pinClk < 0 || _pinCs < 0 || _pinDc < 0) {
+        Serial.println("[display] pins not configured — skipping init");
+        return false;
+    }
     _lcd = new lgfx::LGFX_Device();
     if (!_lcd) return false;
 

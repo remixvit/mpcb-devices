@@ -8,8 +8,8 @@
 // ─── ESP32-S3-Zero ILI9341 Display Manager ────────────────────────────────────
 //
 // Runtime pin configuration from NVS (keys with defaults):
-//   disp_mosi=11  disp_clk=12  disp_cs=10  disp_dc=9
-//   disp_rst=8    disp_led=7   disp_miso=-1
+//   disp_mosi=13  disp_clk=12  disp_cs=11  disp_dc=10
+//   disp_rst=9    disp_led=7   disp_miso=8
 //
 // Widgets stored in NVS under "display" namespace, key "widgets".
 // Receive updates via MQTT topic: mpcb/devices/{id}/display/set
@@ -62,12 +62,12 @@ private:
     lgfx::Panel_ILI9341   _panel;
     lgfx::LGFX_Device*    _lcd = nullptr;
 
-    int  _pinMosi               = 11;
-    int  _pinClk                = 12;
-    int  _pinCs                 = 10;
-    int  _pinDc                 = 9;
-    int  _pinRst                = 8;
-    int  _pinLed                = 7;
+    int  _pinMosi               = -1;
+    int  _pinClk                = -1;
+    int  _pinCs                 = -1;
+    int  _pinDc                 = -1;
+    int  _pinRst                = -1;
+    int  _pinLed                = -1;
     int  _pinMiso               = -1;
     bool _ready                 = false;
     bool _needsRedraw           = false;
