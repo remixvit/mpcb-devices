@@ -158,6 +158,7 @@ void setup() {
 #ifdef MPCB_USE_DISPLAY
         iot.subscribe("mpcb/devices/" + deviceId + "/display/set");
         iot.subscribe("mpcb/devices/" + deviceId + "/+/state");
+        iot.subscribe("mpcb/devices/" + deviceId + "/calibrate/set");
 #endif
     });
 
@@ -177,6 +178,9 @@ void setup() {
         }
         if (topic.endsWith("/display/set")) {
             display.saveAndRender(payload);
+        }
+        if (topic.endsWith("/calibrate/set")) {
+            display.requestCalibrate();
         }
 #endif
         if (topic.endsWith("/configure/set")) {
@@ -228,6 +232,27 @@ void setup() {
     iot.onDashCmd([](const String& key, const String& payload){ pm.handleLocalCmd(key, payload); });
 
     // ── Network first ──────────────────────────────────────────────────────
+#ifdef MPCB_USE_DISPLAY
+    iot.addWebRoute("/calibrate", [&]() {
+        display.requestCalibrate();
+        iot.webServer()->send(200, "text/html; charset=utf-8",
+            "<html><body style='font-family:sans-serif;padding:20px;background:#111;color:#fff'>"
+            "<h2>Touch calibration</h2>"
+            "<p>Tap the crosshairs on the device screen.</p>"
+            "<p id='status' style='color:#888'>Calibrating...</p>"
+            "<script>setInterval(()=>fetch('/calibrate/status')"
+            ".then(r=>r.json()).then(d=>{if(d.status==='done'){"
+            "document.getElementById('status').innerHTML="
+            "'<span style=color:#34c759>&#10003; Done!</span>';"
+            "}}),1000)</script>"
+            "</body></html>"
+        );
+    });
+    iot.addWebRoute("/calibrate/status", [&]() {
+        iot.webServer()->send(200, "application/json",
+            display.isCalibrating() ? "{\"status\":\"in_progress\"}" : "{\"status\":\"done\"}");
+    });
+#endif
     iot.begin(devName);
 
     // ── Peripherals ─────────────────────────────────────────────────────────
@@ -243,7 +268,13 @@ void setup() {
         Serial.println("[display] init FAILED — check NVS pins");
     }
     // Core 0 — display uses polling SPI (no DMA), no conflict with WiFi GDMA
+#if CONFIG_FREERTOS_UNICORE
+    // Single-core (C3, C6, H2): no core pinning, WiFi and display share the same core
+    xTaskCreate(displayTask, "display", 8192, NULL, 1, NULL);
+#else
+    // Dual-core (S3, ESP32): pin display to Core 0, WiFi stays on Core 1
     xTaskCreatePinnedToCore(displayTask, "display", 8192, NULL, 1, NULL, 0);
+#endif
 #endif
 
     Log.log("App", "Device ready: " + deviceId + " board=" MPCB_BOARD_ID);

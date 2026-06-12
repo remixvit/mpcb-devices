@@ -96,6 +96,7 @@ bool DisplayManager::begin() {
     _ready = true;
     _stateMutex = xSemaphoreCreateMutex();
     _touchQueue = xQueueCreate(4, sizeof(TouchCmd));
+    _calibrateQueue = xQueueCreate(1, sizeof(uint8_t));
     if (_pinTouchCs >= 0) _initTouch();
     clear();
     return true;
@@ -325,10 +326,43 @@ String DisplayManager::getStateValue(const String& dotKey) const {
 
 void DisplayManager::_initTouch() {
     Serial.printf("[touch] XPT2046 init: cs=%d irq=%d\n", _pinTouchCs, _pinTouchIrq);
+    Preferences prefs;
+    prefs.begin("display", true);
+    uint16_t data[8];
+    if (prefs.getBytes("touch_cal", data, sizeof(data)) == sizeof(data)) {
+        _lcd->setTouchCalibrate(data);
+        Serial.println("[touch] calibration loaded from NVS");
+    }
+    prefs.end();
+}
+
+void DisplayManager::requestCalibrate() {
+    if (!_calibrateQueue || _calibrating) return;
+    uint8_t sig = 1;
+    xQueueSend(_calibrateQueue, &sig, 0);
+    Serial.println("[calibrate] request queued");
 }
 
 void DisplayManager::pollTouch() {
     if (!_ready || !_lcd || !_touchQueue) return;
+
+    // Check calibration request (from Core 1 via MQTT/HTTP)
+    uint8_t sig;
+    if (_calibrateQueue && xQueueReceive(_calibrateQueue, &sig, 0) == pdTRUE) {
+        _calibrating = true;
+        Serial.println("[calibrate] starting...");
+        uint16_t data[8];
+        _lcd->calibrateTouch(data, TFT_WHITE, TFT_BLACK, 15);
+        Preferences prefs;
+        prefs.begin("display", false);
+        prefs.putBytes("touch_cal", data, sizeof(data));
+        prefs.end();
+        _lcd->setTouchCalibrate(data);
+        _calibrating = false;
+        Serial.println("[calibrate] done, saved to NVS");
+        return;
+    }
+
     if (_buttons.empty()) return;
 
     uint16_t tx, ty;

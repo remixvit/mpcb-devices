@@ -58,6 +58,10 @@ public:
     void pollTouch();
     bool getTouchCmd(TouchCmd& cmd);
 
+    // Calibration
+    void requestCalibrate();
+    bool isCalibrating() const { return _calibrating; }
+
     // Thread-safe state cache for value/gauge widgets
     void updateStateValue(const String& dotKey, const String& value);
     void clearState();
@@ -102,6 +106,10 @@ private:
     // Touch (XPT2046) button hit tracking
     QueueHandle_t _touchQueue = nullptr;
     uint32_t _lastTapMs = 0;
+
+    // Calibration (request from Core 1, execute on Core 0 via pollTouch)
+    QueueHandle_t _calibrateQueue = nullptr;
+    bool _calibrating = false;
 
     struct ButtonHit { int x, y, w, h; char topic[128]; char payload[256]; };
     std::vector<ButtonHit> _buttons;
