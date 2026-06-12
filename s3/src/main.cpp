@@ -237,14 +237,11 @@ void setup() {
         display.requestCalibrate();
         iot.webServer()->send(200, "text/html; charset=utf-8",
             "<html><body style='font-family:sans-serif;padding:20px;background:#111;color:#fff'>"
-            "<h2>Touch calibration</h2>"
-            "<p>Tap the crosshairs on the device screen.</p>"
-            "<p id='status' style='color:#888'>Calibrating...</p>"
-            "<script>setInterval(()=>fetch('/calibrate/status')"
-            ".then(r=>r.json()).then(d=>{if(d.status==='done'){"
-            "document.getElementById('status').innerHTML="
-            "'<span style=color:#34c759>&#10003; Done!</span>';"
-            "}}),1000)</script>"
+            "<h2>Калибровка тачскрина</h2>"
+            "<p>Тапайте по крестикам на экране устройства.</p>"
+            "<script>let i=setInterval(()=>fetch('/calibrate/status')"
+            ".then(r=>r.json()).then(d=>{if(d.status==='done'){clearInterval(i);"
+            "document.body.innerHTML+='<p style=color:lime>Готово!</p>'}}),1000)</script>"
             "</body></html>"
         );
     });
