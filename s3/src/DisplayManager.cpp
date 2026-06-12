@@ -30,7 +30,7 @@ bool DisplayManager::begin() {
     busCfg.freq_write = 40000000;
     busCfg.freq_read  = 16000000;
     busCfg.spi_3wire  = (_pinMiso < 0);
-    busCfg.pin_dc = _pinDc;
+    busCfg.pin_dc     = _pinDc;
     _bus.config(busCfg);
     _panel.setBus(&_bus);
 
