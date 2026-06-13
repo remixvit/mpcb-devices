@@ -69,22 +69,42 @@ public:
 
 private:
     static uint16_t _hexToRgb565(const char* hex);
-    void _drawValue(int x, int y, int w, int h, const String& label,
-                    const String& source, const String& format,
-                    int fontSize, uint16_t color, uint16_t bg);
-    void _drawLabel(int x, int y, int w, int h, const String& text,
-                    int fontSize, uint16_t color, uint16_t bg);
-    void _drawButton(int x, int y, int w, int h, const String& label,
+    static bool _isTransparent(const char* hex);
+    void _drawValue (lgfx::LGFXBase* tgt, int x, int y, int w, int h,
+                     const String& label, const String& source, const String& format,
                      int fontSize, uint16_t color, uint16_t bg);
-    void _drawGauge(int x, int y, int w, int h, const String& label,
-                    const String& source, float minV, float maxV,
-                    int fontSize, uint16_t color, uint16_t bg);
+    void _drawLabel (lgfx::LGFXBase* tgt, int x, int y, int w, int h,
+                     const String& text, int fontSize, uint16_t color, uint16_t bg);
+    void _drawButton(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
+                     const String& label, int fontSize, uint16_t color, uint16_t bg);
+    void _drawGauge (lgfx::LGFXBase* tgt, int x, int y, int w, int h,
+                     const String& label, const String& source,
+                     float minV, float maxV, int fontSize, uint16_t color, uint16_t bg);
+    void _drawRect  (lgfx::LGFXBase* tgt, int x, int y, int w, int h,
+                     uint16_t color, uint16_t bg, bool filled, int radius, int thickness);
+    void _drawLine  (lgfx::LGFXBase* tgt, int x, int y, int w, int h,
+                     uint16_t color, int thickness);
     float _textScale(int fontSize) const;
+
+    void _renderToSprite();
+    void _renderDirty();
+    void _renderWidgets(lgfx::LGFXBase* tgt);
+    uint32_t _widgetHash(const JsonObject& w);
 
     // LovyanGFX objects — must persist (device holds references)
     lgfx::Bus_SPI         _bus;
     lgfx::Panel_ILI9341   _panel;
-    lgfx::LGFX_Device*    _lcd = nullptr;
+    lgfx::LGFX_Device*    _lcd    = nullptr;
+    lgfx::LGFX_Sprite*    _sprite = nullptr;
+    bool _useSpriteRender = false;
+
+    // Dirty tracking (no-PSRAM fallback)
+    struct WidgetCache {
+        String   id;
+        int      x, y, w, h, z;
+        uint32_t contentHash;
+    };
+    std::vector<WidgetCache> _widgetCache;
 
     int  _pinMosi               = -1;
     int  _pinClk                = -1;
