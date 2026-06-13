@@ -112,23 +112,16 @@ void DisplayManager::clear() {
 }
 
 void DisplayManager::saveAndRender(const String& widgetsJson) {
+    // NVS is not used for widget storage — JSON can exceed NVS string limit (4000 bytes)
+    // and fill the 20KB NVS partition, causing WiFi/MQTT credentials to fail to save.
+    // Widget config is re-delivered by MQTT broker on reconnect (retain=true).
     _widgetsJson = widgetsJson;
-    Preferences prefs;
-    prefs.begin("display", false);
-    prefs.putString("widgets", _widgetsJson);
-    prefs.end();
     _needsRedraw = true;
 }
 
 void DisplayManager::loadAndRender() {
-    Preferences prefs;
-    prefs.begin("display", true);
-    _widgetsJson = prefs.getString("widgets", "");
-    prefs.end();
-    if (_widgetsJson.length() > 0) {
-        _needsRedraw = true;
-        render();
-    }
+    // No-op: widget config comes from MQTT retain on reconnect.
+    // Display shows blank until first MQTT delivery.
 }
 
 void DisplayManager::render() {
