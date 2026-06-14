@@ -1,6 +1,12 @@
 #include "DisplayManager.h"
 #ifdef MPCB_USE_DISPLAY
 
+static String _sanitizeKey(const char* s) {
+    String out;
+    for (; *s; ++s) if (isAlphaNumeric(*s)) out += (char)tolower(*s);
+    return out;
+}
+
 DisplayManager::DisplayManager() {}
 DisplayManager::~DisplayManager() {
     delete _lcd;
@@ -344,12 +350,6 @@ void DisplayManager::_renderDirty() {
         idx++;
     }
     if (_widgetCache.size() > idx) _widgetCache.resize(idx);
-}
-
-static String _sanitizeKey(const char* s) {
-    String out;
-    for (; *s; ++s) if (isAlphaNumeric(*s)) out += (char)tolower(*s);
-    return out;
 }
 
 uint16_t DisplayManager::_hexToRgb565(const char* hex) {
