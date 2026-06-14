@@ -234,7 +234,7 @@ void DisplayManager::_renderWidgets(lgfx::LGFXBase* tgt) {
             } else {
                 payloadStr = w["payload"] | "{}";
             }
-            String periph = w["peripheral"] | "";
+            String periph = _sanitizeKey(w["label"] | "");  // widget identity for rules engine
             topic.toCharArray(hit.topic, sizeof(hit.topic));
             payloadStr.toCharArray(hit.payload, sizeof(hit.payload));
             periph.toCharArray(hit.peripheral, sizeof(hit.peripheral));
@@ -341,7 +341,7 @@ void DisplayManager::_renderDirty() {
             String payloadStr;
             if (pv.is<JsonObject>()) serializeJson(pv, payloadStr);
             else payloadStr = w["payload"] | "{}";
-            String periph = w["peripheral"] | "";
+            String periph = _sanitizeKey(w["label"] | "");  // widget identity for rules engine
             topic.toCharArray(hit.topic, sizeof(hit.topic));
             payloadStr.toCharArray(hit.payload, sizeof(hit.payload));
             periph.toCharArray(hit.peripheral, sizeof(hit.peripheral));
