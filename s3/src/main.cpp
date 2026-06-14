@@ -257,6 +257,11 @@ void setup() {
     if (iot.state() == IotState::RUNNING) pm.onMqttConnected();
 
 #ifdef MPCB_USE_DISPLAY
+    // Wire display LED widgets as rule targets
+    pm.setDisplayActionCallback([](const String& key, const String& action) {
+        display.setWidgetState(key, action);
+    });
+
     // ── Display init + Core 0 task ──────────────────────────────────────────
     if (display.begin()) {
         Serial.println("[display] init OK");

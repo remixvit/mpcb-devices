@@ -248,7 +248,7 @@ void DisplayManager::_renderWidgets(lgfx::LGFXBase* tgt) {
         } else if (strcmp(type, "led") == 0) {
             uint16_t on  = _hexToRgb565(w["colorOn"]  | "#22c55e");
             uint16_t off = _hexToRgb565(w["colorOff"] | "#ef4444");
-            _drawLed(tgt, x, y, ww, hh, w["source"] | "", on, off);
+            _drawLed(tgt, x, y, ww, hh, w["source"] | "", on, off, _sanitizeKey(w["label"] | ""));
         }
     }
 }
@@ -320,7 +320,7 @@ void DisplayManager::_renderDirty() {
             } else if (strcmp(type, "led") == 0) {
                 uint16_t on  = _hexToRgb565(w["colorOn"]  | "#22c55e");
                 uint16_t off = _hexToRgb565(w["colorOff"] | "#ef4444");
-                _drawLed(_lcd, x, y, ww, hh, w["source"] | "", on, off);
+                _drawLed(_lcd, x, y, ww, hh, w["source"] | "", on, off, _sanitizeKey(w["label"] | ""));
             }
 
             if (idx >= _widgetCache.size()) _widgetCache.resize(idx + 1);
@@ -344,6 +344,12 @@ void DisplayManager::_renderDirty() {
         idx++;
     }
     if (_widgetCache.size() > idx) _widgetCache.resize(idx);
+}
+
+static String _sanitizeKey(const char* s) {
+    String out;
+    for (; *s; ++s) if (isAlphaNumeric(*s)) out += (char)tolower(*s);
+    return out;
 }
 
 uint16_t DisplayManager::_hexToRgb565(const char* hex) {
@@ -448,10 +454,22 @@ void DisplayManager::_drawLine(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
 }
 
 void DisplayManager::_drawLed(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
-                              const String& source, uint16_t colorOn, uint16_t colorOff) {
+                              const String& source, uint16_t colorOn, uint16_t colorOff,
+                              const String& key) {
     if (!tgt) return;
-    String val = source.length() > 0 ? getStateValue(source) : "";
-    bool on = (val == "true" || val == "1" || (val.length() > 0 && val != "false" && val != "0" && val.toFloat() > 0));
+    bool on;
+    if (key.length() > 0) {
+        auto it = _ledOverrides.find(key);
+        if (it != _ledOverrides.end()) {
+            on = it->second;
+        } else {
+            String val = source.length() > 0 ? getStateValue(source) : "";
+            on = (val == "true" || val == "1" || (val.length() > 0 && val != "false" && val != "0" && val.toFloat() > 0));
+        }
+    } else {
+        String val = source.length() > 0 ? getStateValue(source) : "";
+        on = (val == "true" || val == "1" || (val.length() > 0 && val != "false" && val != "0" && val.toFloat() > 0));
+    }
     int r = min(w, h) / 2 - 1;
     int cx = x + w / 2;
     int cy = y + h / 2;
@@ -460,6 +478,18 @@ void DisplayManager::_drawLed(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
     // dim ring when off
     uint16_t ring = on ? colorOn : (uint16_t)((colorOff >> 2) & 0x39E7);
     tgt->drawCircle(cx, cy, r, ring);
+}
+
+void DisplayManager::setWidgetState(const String& key, const String& action) {
+    if (action == "on")          _ledOverrides[key] = true;
+    else if (action == "off")    _ledOverrides[key] = false;
+    else if (action == "toggle") _ledOverrides[key] = !getLedState(key);
+    _needsRedraw = true;
+}
+
+bool DisplayManager::getLedState(const String& key) const {
+    auto it = _ledOverrides.find(key);
+    return it != _ledOverrides.end() ? it->second : false;
 }
 
 void DisplayManager::_drawGauge(lgfx::LGFXBase* tgt, int x, int y, int w, int h,

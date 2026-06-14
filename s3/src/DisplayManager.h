@@ -68,6 +68,10 @@ public:
     void clearState();
     String getStateValue(const String& dotKey) const;
 
+    // LED widget override (rules engine target: disp_<key>)
+    void setWidgetState(const String& key, const String& action);
+    bool getLedState(const String& key) const;
+
 private:
     static uint16_t _hexToRgb565(const char* hex);
     static bool _isTransparent(const char* hex);
@@ -86,7 +90,8 @@ private:
     void _drawLine  (lgfx::LGFXBase* tgt, int x, int y, int w, int h,
                      uint16_t color, int thickness);
     void _drawLed   (lgfx::LGFXBase* tgt, int x, int y, int w, int h,
-                     const String& source, uint16_t colorOn, uint16_t colorOff);
+                     const String& source, uint16_t colorOn, uint16_t colorOff,
+                     const String& key = "");
     float _textScale(int fontSize) const;
 
     void _renderToSprite();
@@ -125,6 +130,9 @@ private:
     // Thread-safe state cache for value/gauge widget data
     mutable SemaphoreHandle_t _stateMutex = nullptr;
     std::map<String, String>  _stateCache;
+
+    // LED override state (from rules engine, key = sanitized widget label)
+    std::map<String, bool>    _ledOverrides;
 
     // Touch (XPT2046) button hit tracking
     QueueHandle_t _touchQueue = nullptr;
