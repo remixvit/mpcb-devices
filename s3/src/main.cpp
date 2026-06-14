@@ -286,8 +286,11 @@ void loop() {
     {
         TouchCmd cmd;
         if (display.getTouchCmd(cmd)) {
-            iot.publish(String(cmd.topic), String(cmd.payload));
-            Serial.printf("[touch] published: %s → %s\n", cmd.topic, cmd.payload);
+            if (strlen(cmd.topic) > 0)
+                iot.publish(String(cmd.topic), String(cmd.payload));
+            if (strlen(cmd.peripheral) > 0)
+                pm.fireButtonEvent(String(cmd.peripheral));
+            Serial.printf("[touch] tap: %s → %s (periph=%s)\n", cmd.topic, cmd.payload, cmd.peripheral);
         }
     }
 #endif

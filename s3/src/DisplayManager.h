@@ -25,6 +25,7 @@
 struct TouchCmd {
     char topic[128];
     char payload[256];
+    char peripheral[64];  // peripheral key for rules engine (may be empty)
 };
 
 class DisplayManager {
@@ -84,6 +85,8 @@ private:
                      uint16_t color, uint16_t bg, bool filled, int radius, int thickness);
     void _drawLine  (lgfx::LGFXBase* tgt, int x, int y, int w, int h,
                      uint16_t color, int thickness);
+    void _drawLed   (lgfx::LGFXBase* tgt, int x, int y, int w, int h,
+                     const String& source, uint16_t colorOn, uint16_t colorOff);
     float _textScale(int fontSize) const;
 
     void _renderToSprite();
@@ -131,7 +134,7 @@ private:
     QueueHandle_t _calibrateQueue = nullptr;
     bool _calibrating = false;
 
-    struct ButtonHit { int x, y, w, h; char topic[128]; char payload[256]; };
+    struct ButtonHit { int x, y, w, h; char topic[128]; char payload[256]; char peripheral[64]; };
     std::vector<ButtonHit> _buttons;
 
     void _initTouch();

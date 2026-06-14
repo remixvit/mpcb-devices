@@ -164,6 +164,8 @@ uint32_t DisplayManager::_widgetHash(const JsonObject& w) {
     s += (const char*)(w["bgColor"] | "");
     const char* src = w["source"] | "";
     if (src && strlen(src) > 0) s += getStateValue(src);
+    s += (const char*)(w["colorOn"]  | "");
+    s += (const char*)(w["colorOff"] | "");
     // djb2
     uint32_t h = 5381;
     for (char c : s) h = ((h << 5) + h) + (uint8_t)c;
@@ -226,8 +228,10 @@ void DisplayManager::_renderWidgets(lgfx::LGFXBase* tgt) {
             } else {
                 payloadStr = w["payload"] | "{}";
             }
+            String periph = w["peripheral"] | "";
             topic.toCharArray(hit.topic, sizeof(hit.topic));
             payloadStr.toCharArray(hit.payload, sizeof(hit.payload));
+            periph.toCharArray(hit.peripheral, sizeof(hit.peripheral));
             _buttons.push_back(hit);
         } else if (strcmp(type, "gauge") == 0) {
             float minV = w["min"] | 0.0f;
@@ -241,6 +245,10 @@ void DisplayManager::_renderWidgets(lgfx::LGFXBase* tgt) {
         } else if (strcmp(type, "line") == 0) {
             int thk = w["thickness"] | 1;
             _drawLine(tgt, x, y, ww, hh, color, thk);
+        } else if (strcmp(type, "led") == 0) {
+            uint16_t on  = _hexToRgb565(w["colorOn"]  | "#22c55e");
+            uint16_t off = _hexToRgb565(w["colorOff"] | "#ef4444");
+            _drawLed(tgt, x, y, ww, hh, w["source"] | "", on, off);
         }
     }
 }
@@ -309,6 +317,10 @@ void DisplayManager::_renderDirty() {
                           w["borderRadius"] | 0, w["thickness"] | 1);
             } else if (strcmp(type, "line") == 0) {
                 _drawLine(_lcd, x, y, ww, hh, color, w["thickness"] | 1);
+            } else if (strcmp(type, "led") == 0) {
+                uint16_t on  = _hexToRgb565(w["colorOn"]  | "#22c55e");
+                uint16_t off = _hexToRgb565(w["colorOff"] | "#ef4444");
+                _drawLed(_lcd, x, y, ww, hh, w["source"] | "", on, off);
             }
 
             if (idx >= _widgetCache.size()) _widgetCache.resize(idx + 1);
@@ -323,8 +335,10 @@ void DisplayManager::_renderDirty() {
             String payloadStr;
             if (pv.is<JsonObject>()) serializeJson(pv, payloadStr);
             else payloadStr = w["payload"] | "{}";
+            String periph = w["peripheral"] | "";
             topic.toCharArray(hit.topic, sizeof(hit.topic));
             payloadStr.toCharArray(hit.payload, sizeof(hit.payload));
+            periph.toCharArray(hit.peripheral, sizeof(hit.peripheral));
             _buttons.push_back(hit);
         }
         idx++;
@@ -431,6 +445,21 @@ void DisplayManager::_drawLine(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
     for (int i = 0; i < thickness; i++) {
         tgt->drawLine(x, y + i, x + w, y + h + i, color);
     }
+}
+
+void DisplayManager::_drawLed(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
+                              const String& source, uint16_t colorOn, uint16_t colorOff) {
+    if (!tgt) return;
+    String val = source.length() > 0 ? getStateValue(source) : "";
+    bool on = (val == "true" || val == "1" || (val.length() > 0 && val != "false" && val != "0" && val.toFloat() > 0));
+    int r = min(w, h) / 2 - 1;
+    int cx = x + w / 2;
+    int cy = y + h / 2;
+    uint16_t clr = on ? colorOn : colorOff;
+    tgt->fillCircle(cx, cy, r, clr);
+    // dim ring when off
+    uint16_t ring = on ? colorOn : (uint16_t)((colorOff >> 2) & 0x39E7);
+    tgt->drawCircle(cx, cy, r, ring);
 }
 
 void DisplayManager::_drawGauge(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
@@ -612,10 +641,12 @@ void DisplayManager::pollTouch() {
 
             // Send to queue
             TouchCmd cmd;
-            strncpy(cmd.topic,   btn.topic,   sizeof(cmd.topic)   - 1);
-            strncpy(cmd.payload, btn.payload, sizeof(cmd.payload) - 1);
-            cmd.topic[sizeof(cmd.topic) - 1]   = '\0';
-            cmd.payload[sizeof(cmd.payload) - 1] = '\0';
+            strncpy(cmd.topic,      btn.topic,      sizeof(cmd.topic)      - 1);
+            strncpy(cmd.payload,    btn.payload,    sizeof(cmd.payload)    - 1);
+            strncpy(cmd.peripheral, btn.peripheral, sizeof(cmd.peripheral) - 1);
+            cmd.topic[sizeof(cmd.topic)           - 1] = '\0';
+            cmd.payload[sizeof(cmd.payload)       - 1] = '\0';
+            cmd.peripheral[sizeof(cmd.peripheral) - 1] = '\0';
 
             if (strlen(cmd.topic) == 0) {
                 Serial.println("[touch] tap ignored — empty topic");
