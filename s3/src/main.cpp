@@ -184,6 +184,7 @@ void setup() {
         }
 #endif
         if (topic.endsWith("/configure/set")) {
+            pm.handleConfigure(payload);
             JsonDocument doc;
             DeserializationError err = deserializeJson(doc, payload);
             if (err != DeserializationError::Ok) {
@@ -257,11 +258,6 @@ void setup() {
     if (iot.state() == IotState::RUNNING) pm.onMqttConnected();
 
 #ifdef MPCB_USE_DISPLAY
-    // Wire display LED widgets as rule targets
-    pm.setDisplayActionCallback([](const String& key, const String& action) {
-        display.setWidgetState(key, action);
-    });
-
     // ── Display init + Core 0 task ──────────────────────────────────────────
     if (display.begin()) {
         Serial.println("[display] init OK");
@@ -272,7 +268,7 @@ void setup() {
     // Core 0 — display uses polling SPI (no DMA), no conflict with WiFi GDMA
 #if CONFIG_FREERTOS_UNICORE
     // Single-core (C3, C6, H2): no core pinning, WiFi and display share the same core
-    xTaskCreate(displayTask, "display", 8192, NULL, 1, NULL);
+    xTaskCreate(displayTask, "display", 16384, NULL, 1, NULL);
 #else
     // Dual-core (S3, ESP32): pin display to Core 0, WiFi stays on Core 1
     xTaskCreatePinnedToCore(displayTask, "display", 8192, NULL, 1, NULL, 0);
@@ -291,11 +287,8 @@ void loop() {
     {
         TouchCmd cmd;
         if (display.getTouchCmd(cmd)) {
-            if (strlen(cmd.topic) > 0)
-                iot.publish(String(cmd.topic), String(cmd.payload));
-            if (strlen(cmd.peripheral) > 0)
-                pm.fireButtonEvent(String(cmd.peripheral));
-            Serial.printf("[touch] tap: %s → %s (periph=%s)\n", cmd.topic, cmd.payload, cmd.peripheral);
+            iot.publish(String(cmd.topic), String(cmd.payload));
+            Serial.printf("[touch] published: %s → %s\n", cmd.topic, cmd.payload);
         }
     }
 #endif

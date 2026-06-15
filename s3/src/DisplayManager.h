@@ -131,8 +131,10 @@ private:
     mutable SemaphoreHandle_t _stateMutex = nullptr;
     std::map<String, String>  _stateCache;
 
-    // LED override state (from rules engine, key = sanitized widget label)
-    std::map<String, bool>    _ledOverrides;
+    // LED override state (from rules engine, key = sanitized widget label, max 8 LEDs)
+    struct LedOverride { char key[32]; bool state; };
+    LedOverride _ledOverrides[8] = {};
+    uint8_t     _ledOverrideCount = 0;
 
     // Touch (XPT2046) button hit tracking
     QueueHandle_t _touchQueue = nullptr;

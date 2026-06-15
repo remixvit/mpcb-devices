@@ -459,10 +459,11 @@ void DisplayManager::_drawLed(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
     if (!tgt) return;
     bool on;
     if (key.length() > 0) {
-        auto it = _ledOverrides.find(key);
-        if (it != _ledOverrides.end()) {
-            on = it->second;
-        } else {
+        bool found = false;
+        for (uint8_t i = 0; i < _ledOverrideCount; i++) {
+            if (key == _ledOverrides[i].key) { on = _ledOverrides[i].state; found = true; break; }
+        }
+        if (!found) {
             String val = source.length() > 0 ? getStateValue(source) : "";
             on = (val == "true" || val == "1" || (val.length() > 0 && val != "false" && val != "0" && val.toFloat() > 0));
         }
@@ -481,15 +482,27 @@ void DisplayManager::_drawLed(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
 }
 
 void DisplayManager::setWidgetState(const String& key, const String& action) {
-    if (action == "on")          _ledOverrides[key] = true;
-    else if (action == "off")    _ledOverrides[key] = false;
-    else if (action == "toggle") _ledOverrides[key] = !getLedState(key);
-    _needsRedraw = true;
+    bool newState = false;
+    if      (action == "on")     newState = true;
+    else if (action == "off")    newState = false;
+    else if (action == "toggle") newState = !getLedState(key);
+    else return;
+    for (uint8_t i = 0; i < _ledOverrideCount; i++) {
+        if (key == _ledOverrides[i].key) { _ledOverrides[i].state = newState; _needsRedraw = true; return; }
+    }
+    if (_ledOverrideCount < 8) {
+        key.toCharArray(_ledOverrides[_ledOverrideCount].key, 32);
+        _ledOverrides[_ledOverrideCount].state = newState;
+        _ledOverrideCount++;
+        _needsRedraw = true;
+    }
 }
 
 bool DisplayManager::getLedState(const String& key) const {
-    auto it = _ledOverrides.find(key);
-    return it != _ledOverrides.end() ? it->second : false;
+    for (uint8_t i = 0; i < _ledOverrideCount; i++) {
+        if (key == _ledOverrides[i].key) return _ledOverrides[i].state;
+    }
+    return false;
 }
 
 void DisplayManager::_drawGauge(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
@@ -678,12 +691,12 @@ void DisplayManager::pollTouch() {
             cmd.payload[sizeof(cmd.payload)       - 1] = '\0';
             cmd.peripheral[sizeof(cmd.peripheral) - 1] = '\0';
 
-            if (strlen(cmd.topic) == 0) {
-                Serial.println("[touch] tap ignored — empty topic");
+            if (strlen(cmd.topic) == 0 && strlen(cmd.peripheral) == 0) {
+                Serial.println("[touch] tap ignored — no topic and no peripheral");
             } else if (xQueueSend(_touchQueue, &cmd, 0) != pdTRUE) {
                 Serial.println("[touch] queue full — tap dropped");
             } else {
-                Serial.printf("[touch] tap → topic=%s\n", cmd.topic);
+                Serial.printf("[touch] tap → topic=%s periph=%s\n", cmd.topic, cmd.peripheral);
             }
             break;
         }
