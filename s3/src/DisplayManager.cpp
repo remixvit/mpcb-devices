@@ -172,6 +172,11 @@ uint32_t DisplayManager::_widgetHash(const JsonObject& w) {
     if (src && strlen(src) > 0) s += getStateValue(src);
     s += (const char*)(w["colorOn"]  | "");
     s += (const char*)(w["colorOff"] | "");
+    // For LED widgets: include override state so dirty check triggers on setWidgetState
+    if (strcmp(w["type"] | "", "led") == 0) {
+        String key = _sanitizeKey(w["label"] | "");
+        s += getLedState(key) ? "1" : "0";
+    }
     // djb2
     uint32_t h = 5381;
     for (char c : s) h = ((h << 5) + h) + (uint8_t)c;
@@ -377,19 +382,25 @@ void DisplayManager::_drawValue(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
                                 const String& format,
                                 int fontSize, uint16_t color, uint16_t bg) {
     if (!tgt) return;
-    tgt->fillRect(x, y, w, h, bg);
+    tgt->fillRect(x, y, w, h, TFT_BLACK);
+
+    uint16_t dim = (color >> 2) & 0x39E7;
+    if (bg != TFT_BLACK) {
+        tgt->fillRoundRect(x, y, w, h, 4, bg);
+    }
+    tgt->drawRoundRect(x, y, w, h, 4, dim);
 
     if (label.length() > 0) {
         tgt->setTextSize(1.0f);
-        tgt->setTextColor(color, bg);
-        tgt->setCursor(x + 4, y + 2);
+        tgt->setTextColor((color >> 1) & 0x7BEF, bg == TFT_BLACK ? TFT_BLACK : bg);
+        tgt->setCursor(x + 4, y + 3);
         tgt->print(label);
     }
 
     float scale = _textScale(fontSize);
     tgt->setTextSize(scale);
-    tgt->setTextColor(color, bg);
-    int valY = label.length() > 0 ? y + h / 2 : y + (h - (int)(8 * scale)) / 2;
+    tgt->setTextColor(color, bg == TFT_BLACK ? TFT_BLACK : bg);
+    int valY = label.length() > 0 ? y + 12 : y + (h - (int)(8 * scale)) / 2;
     tgt->setCursor(x + 4, valY);
     String disp;
     if (source.length() > 0) {
@@ -405,10 +416,10 @@ void DisplayManager::_drawLabel(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
                                 const String& text,
                                 int fontSize, uint16_t color, uint16_t bg) {
     if (!tgt) return;
-    tgt->fillRect(x, y, w, h, bg);
+    tgt->fillRect(x, y, w, h, TFT_BLACK);
     float scale = _textScale(fontSize);
     tgt->setTextSize(scale);
-    tgt->setTextColor(color, bg);
+    tgt->setTextColor(color, TFT_BLACK);
     tgt->setCursor(x + 4, y + (h - (int)(8 * scale)) / 2);
     tgt->print(text);
 }
@@ -417,11 +428,14 @@ void DisplayManager::_drawButton(lgfx::LGFXBase* tgt, int x, int y, int w, int h
                                  const String& label,
                                  int fontSize, uint16_t color, uint16_t bg) {
     if (!tgt) return;
-    tgt->fillRoundRect(x, y, w, h, 4, bg);
-    tgt->drawRoundRect(x, y, w, h, 4, color);
+    tgt->fillRect(x, y, w, h, TFT_BLACK);
+    uint16_t cardBg = (bg == TFT_BLACK) ? 0x1082 : bg;
+    uint16_t dim = (color >> 2) & 0x39E7;
+    tgt->fillRoundRect(x, y, w, h, 6, cardBg);
+    tgt->drawRoundRect(x, y, w, h, 6, dim);
     float scale = _textScale(fontSize);
     tgt->setTextSize(scale);
-    tgt->setTextColor(color, bg);
+    tgt->setTextColor(color, cardBg);
     int16_t tw = label.length() * 6 * scale;
     int tx = x + (w - tw) / 2;
     if (tx < x + 4) tx = x + 4;
@@ -432,11 +446,11 @@ void DisplayManager::_drawButton(lgfx::LGFXBase* tgt, int x, int y, int w, int h
 void DisplayManager::_drawRect(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
                                uint16_t color, uint16_t bg, bool filled, int radius, int thickness) {
     if (!tgt) return;
+    if (!filled && radius == 0) radius = 4;
     if (filled) {
         if (radius > 0) tgt->fillRoundRect(x, y, w, h, radius, color);
         else            tgt->fillRect(x, y, w, h, color);
     } else {
-        // draw outline with thickness
         for (int i = 0; i < thickness; i++) {
             if (radius > 0) tgt->drawRoundRect(x + i, y + i, w - i * 2, h - i * 2, radius, color);
             else            tgt->drawRect(x + i, y + i, w - i * 2, h - i * 2, color);
@@ -474,21 +488,30 @@ void DisplayManager::_drawLed(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
     int r = min(w, h) / 2 - 1;
     int cx = x + w / 2;
     int cy = y + h / 2;
-    uint16_t clr = on ? colorOn : colorOff;
-    tgt->fillCircle(cx, cy, r, clr);
-    // dim ring when off
-    uint16_t ring = on ? colorOn : (uint16_t)((colorOff >> 2) & 0x39E7);
-    tgt->drawCircle(cx, cy, r, ring);
+    uint16_t clr = on ? colorOn : (uint16_t)((colorOff >> 2) & 0x39E7);
+    uint16_t ring = on ? (uint16_t)((colorOn >> 2) & 0x39E7) : (uint16_t)((colorOff >> 3) & 0x18E3);
+    tgt->startWrite();
+    tgt->fillRect(x, y, w, h, TFT_BLACK);
+    tgt->drawCircle(cx, cy, r + 1, ring);
+    tgt->fillCircle(cx, cy, r - 1, clr);
+    if (on) tgt->fillCircle(cx, cy, r / 3, TFT_WHITE);
+    tgt->endWrite();
 }
 
 void DisplayManager::setWidgetState(const String& key, const String& action) {
+    Serial.printf("[display] setWidgetState key='%s' action='%s'\n", key.c_str(), action.c_str());
     bool newState = false;
     if      (action == "on")     newState = true;
     else if (action == "off")    newState = false;
     else if (action == "toggle") newState = !getLedState(key);
     else return;
     for (uint8_t i = 0; i < _ledOverrideCount; i++) {
-        if (key == _ledOverrides[i].key) { _ledOverrides[i].state = newState; _needsRedraw = true; return; }
+        if (key == _ledOverrides[i].key) {
+            if (_ledOverrides[i].state == newState) return;  // no change
+            _ledOverrides[i].state = newState;
+            _needsRedraw = true;
+            return;
+        }
     }
     if (_ledOverrideCount < 8) {
         key.toCharArray(_ledOverrides[_ledOverrideCount].key, 32);
@@ -510,26 +533,50 @@ void DisplayManager::_drawGauge(lgfx::LGFXBase* tgt, int x, int y, int w, int h,
                                 float minV, float maxV,
                                 int fontSize, uint16_t color, uint16_t bg) {
     if (!tgt) return;
-    tgt->fillRect(x, y, w, h, bg);
+    tgt->fillRect(x, y, w, h, TFT_BLACK);
 
-    int barH = h - 4;
-    int barY = y + 2;
+    uint16_t dim = (color >> 2) & 0x39E7;
+    uint16_t cardBg = (bg == TFT_BLACK) ? 0x1082 : bg;
+    tgt->fillRoundRect(x, y, w, h, 4, cardBg);
+    tgt->drawRoundRect(x, y, w, h, 4, dim);
+
+    int barY, barH;
     if (label.length() > 0) {
         tgt->setTextSize(1.0f);
-        tgt->setTextColor(color, bg);
-        tgt->setCursor(x + 4, y + 2);
+        tgt->setTextColor((color >> 1) & 0x7BEF, cardBg);
+        tgt->setCursor(x + 4, y + 3);
         tgt->print(label);
-        barH = h - 16;
-        barY = y + 14;
+        barY = y + 13;
+        barH = max(4, h - 26);
+    } else {
+        barY = y + 4;
+        barH = max(4, h - 16);
     }
 
     float val = getStateValue(source).toFloat();
     float pct = (maxV > minV) ? constrain((val - minV) / (maxV - minV), 0.0f, 1.0f) : 0.0f;
-    int fillW = (int)((w - 4) * pct);
+    int fillW = (int)((w - 8) * pct);
 
-    uint16_t dark = (uint16_t)(color >> 2) & 0x39E7;
-    tgt->fillRoundRect(x + 2, barY, w - 4, barH, 2, dark);
-    tgt->fillRoundRect(x + 2, barY, fillW, barH, 2, color);
+    tgt->fillRoundRect(x + 4, barY, w - 8, barH, 3, 0x1082);
+    if (fillW > 0) tgt->fillRoundRect(x + 4, barY, fillW, barH, 3, color);
+
+    int textY = barY + barH + 2;
+    tgt->setTextSize(1.0f);
+    tgt->setTextColor((color >> 1) & 0x7BEF, cardBg);
+
+    String minStr = String((int)minV);
+    tgt->setCursor(x + 4, textY);
+    tgt->print(minStr);
+
+    String maxStr = String((int)maxV);
+    int maxTw = maxStr.length() * 6;
+    tgt->setCursor(x + w - 4 - maxTw, textY);
+    tgt->print(maxStr);
+
+    String valStr = String((int)val);
+    int valTw = valStr.length() * 6;
+    tgt->setCursor(x + (w - valTw) / 2, textY);
+    tgt->print(valStr);
 }
 
 // ─── Thread-safe state cache ──────────────────────────────────────────────────
@@ -676,10 +723,17 @@ void DisplayManager::pollTouch() {
     for (const auto& btn : _buttons) {
         if (tx >= (uint16_t)btn.x && tx <= (uint16_t)(btn.x + btn.w) &&
             ty >= (uint16_t)btn.y && ty <= (uint16_t)(btn.y + btn.h)) {
-            // Visual feedback — clear cache so dirty render redraws everything after flash
-            _lcd->fillRoundRect(btn.x, btn.y, btn.w, btn.h, 4, TFT_WHITE);
+            // Visual feedback — flash white, then restore only this button
+            _lcd->fillRoundRect(btn.x, btn.y, btn.w, btn.h, 6, TFT_WHITE);
             vTaskDelay(pdMS_TO_TICKS(150));
-            _widgetCache.clear();
+            // Invalidate only this button's cache entry so dirty render redraws just it
+            for (auto& entry : _widgetCache) {
+                if (entry.x == btn.x && entry.y == btn.y &&
+                    entry.w == btn.w && entry.h == btn.h) {
+                    entry.contentHash = 0;
+                    break;
+                }
+            }
             render();
 
             // Send to queue

@@ -203,7 +203,28 @@ void setup() {
                 // handle → NVS key mapping
                 JsonArray conns = node["connections"];
                 if (conns.isNull()) continue;
+                // Only restart if pins actually changed
                 Preferences prefs;
+                prefs.begin("display", true);
+                bool changed = false;
+                for (JsonObject conn : conns) {
+                    const char* handle = conn["handle"];
+                    int pin = conn["pin"] | -1;
+                    if (!handle || pin < 0) continue;
+                    const char* nvsKey = nullptr;
+                    if      (strcmp(handle, "mosi")  == 0) nvsKey = "disp_mosi";
+                    else if (strcmp(handle, "clk")   == 0) nvsKey = "disp_clk";
+                    else if (strcmp(handle, "cs")    == 0) nvsKey = "disp_cs";
+                    else if (strcmp(handle, "dc")    == 0) nvsKey = "disp_dc";
+                    else if (strcmp(handle, "rst")   == 0) nvsKey = "disp_rst";
+                    else if (strcmp(handle, "led")   == 0) nvsKey = "disp_led";
+                    else if (strcmp(handle, "miso")  == 0) nvsKey = "disp_miso";
+                    else if (strcmp(handle, "t_cs")  == 0) nvsKey = "disp_t_cs";
+                    else if (strcmp(handle, "t_irq") == 0) nvsKey = "disp_t_irq";
+                    if (nvsKey && prefs.getInt(nvsKey, -1) != pin) { changed = true; break; }
+                }
+                prefs.end();
+                if (!changed) { Serial.println("[display] pins unchanged, skip reboot"); return; }
                 prefs.begin("display", false);
                 for (JsonObject conn : conns) {
                     const char* handle = conn["handle"];
@@ -220,7 +241,7 @@ void setup() {
                     else if (strcmp(handle, "t_irq") == 0) prefs.putInt("disp_t_irq", pin);
                 }
                 prefs.end();
-                Serial.println("[display] pins saved from canvas, rebooting...");
+                Serial.println("[display] pins changed, rebooting...");
                 delay(200);
                 ESP.restart();
                 return;
@@ -258,6 +279,11 @@ void setup() {
     if (iot.state() == IotState::RUNNING) pm.onMqttConnected();
 
 #ifdef MPCB_USE_DISPLAY
+    // Route disp_<key> rule targets to display LED widgets
+    pm.setDisplayActionCallback([](const String& key, const String& action) {
+        display.setWidgetState(key, action);
+    });
+
     // ── Display init + Core 0 task ──────────────────────────────────────────
     if (display.begin()) {
         Serial.println("[display] init OK");
@@ -268,7 +294,7 @@ void setup() {
     // Core 0 — display uses polling SPI (no DMA), no conflict with WiFi GDMA
 #if CONFIG_FREERTOS_UNICORE
     // Single-core (C3, C6, H2): no core pinning, WiFi and display share the same core
-    xTaskCreate(displayTask, "display", 16384, NULL, 1, NULL);
+    xTaskCreate(displayTask, "display", 8192, NULL, 1, NULL);
 #else
     // Dual-core (S3, ESP32): pin display to Core 0, WiFi stays on Core 1
     xTaskCreatePinnedToCore(displayTask, "display", 8192, NULL, 1, NULL, 0);
@@ -287,8 +313,10 @@ void loop() {
     {
         TouchCmd cmd;
         if (display.getTouchCmd(cmd)) {
-            iot.publish(String(cmd.topic), String(cmd.payload));
-            Serial.printf("[touch] published: %s → %s\n", cmd.topic, cmd.payload);
+            if (strlen(cmd.topic) > 0)
+                iot.publish(String(cmd.topic), String(cmd.payload));
+            if (strlen(cmd.peripheral) > 0)
+                pm.fireButtonEvent(String(cmd.peripheral));
         }
     }
 #endif
